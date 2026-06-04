@@ -426,6 +426,11 @@ ecflow_client --terminate=yes
   and the system reaped it. Override `ECF_JOB_CMD`, `ECF_KILL_CMD`, and
   `ECF_STATUS_CMD` per Step 3 so jobs go through `qsub`. (Running real
   jobs on a login node will also earn you an admin warning.)
+- **"qsub fails with `Error: Please include a valid walltime`."** That
+  particular `.ecf` script is missing `#PBS -l walltime=...` (and probably
+  the rest of the PBS preamble). Every `.ecf` that goes to `qsub` needs the
+  full PBS header at the top, including `select`, `walltime`, `queue`, and
+  account. Compare against a working script in the same suite if unsure.
 - **"`ecflow_ui` won't open: Qt platform plugin xcb failed."** That's an
   X11 forwarding problem on your *terminal*, not an ecFlow problem. You
   don't need the GUI to run a suite — every check in this chapter uses
