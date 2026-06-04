@@ -200,6 +200,62 @@ ping server(dlogin01:2137) succeeded in ...
 That confirms the daemon is up and listening. The server is **persistent**:
 it survives logout. Next time you log in, just `--ping` and continue.
 
+#### What if SecureCRT lands me on a different login node?
+
+It will. WCOSS2's generic hostnames (`cactus.wcoss2.ncep.noaa.gov`,
+`dogwood.wcoss2.ncep.noaa.gov`) round-robin to whatever login node has
+capacity — `dlogin01`, `dlogin02`, etc. So the next time you connect
+you may land on `dlogin02` instead of `dlogin01`. **Your server is
+still on `dlogin01`**, the node it was started from. Don't restart it,
+don't move it; just *aim the client at it from wherever you are*.
+
+All login nodes can talk to each other on the internal network, so
+from any new shell:
+
+```bash
+source ~/ecflow_c96.env       # ECF_HOST is hard-coded to dlogin01
+ecflow_client --ping
+```
+
+should still print `ping server(dlogin01:2137) succeeded`. The fact that
+you happen to be sitting on `dlogin02` is irrelevant -- `ECF_HOST` says
+`dlogin01` and TCP knows how to find it.
+
+Two things to watch for when you cross nodes:
+
+1. **Don't trust `--ping` without explicit flags after a fresh shell.**
+   If anything in the shell startup re-points the client at the production
+   `dhostfile`, the bare `--ping` lands on the wrong port. The defensive
+   form is unambiguous and works from anywhere:
+
+   ```bash
+   ecflow_client --host=dlogin01 --port=2137 --ping
+   ```
+
+   Use `--host` and `--port` on every command if you want zero ambiguity
+   about which server you're talking to. The whole step-by-step procedure
+   above does this for safety.
+2. **The server will outlive your shell.** Running `ssh dlogin01` from
+   another node connects you to the same machine the server is on, but
+   killing your terminal session does not kill the server. `ecflow_start.sh`
+   detaches the server from your shell with `nohup`. To actually stop it
+   you have to send `--terminate=yes` explicitly.
+
+If you ever genuinely want to start over on a fresh login node (because
+the original is being drained, or you forgot which one you used), do the
+moving deliberately:
+
+```bash
+ssh dlogin01
+ecflow_client --terminate=yes        # stop the old server
+ssh dlogin02
+source ~/ecflow_c96.env              # then edit ECF_HOST=dlogin02 first
+ecflow_start.sh -p "${ECF_PORT}" -d "${ECF_HOME}"
+```
+
+And update `~/ecflow_c96.env` to point at the new node so you don't keep
+fighting the old hostname.
+
 ### Step 2 — Load the suite, suspended
 
 ```bash
