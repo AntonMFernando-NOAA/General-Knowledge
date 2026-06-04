@@ -10,6 +10,8 @@ The book grows over time. Chapters are added as topics come up in real work.
 ### Part 1 — Technical
 - [1.1 SSH Port Forwarding and Connecting to RDHPCS (Hera)](chapters/01-technical/01-ssh-port-forwarding-rdhpcs.md)
 
+- [1.2 Running an ecFlow Suite (and how it differs from Rocoto)](chapters/01-technical/02-ecflow-on-wcoss2.md)
+
 _(more chapters to come)_
 
 ## How this book is organized
