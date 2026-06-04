@@ -249,6 +249,28 @@ ecflow_client --alter add variable SENDCANNEDDBN  NO                /gfs_c96
 ecflow_client --alter add variable rrfs_ver       ""                /gfs_c96
 ```
 
+#### Critical: tell ecFlow to submit through PBS, not run inline
+
+On a freshly-started server, `ECF_JOB_CMD` defaults to running the rendered
+job *directly* in the foreground (`%ECF_JOB% 1> %ECF_JOBOUT% 2>&1`). On a
+WCOSS2 login node that means your jobs run **on the login node itself**,
+which is forbidden — the system reaper kills them after ~5 minutes (the
+task aborts with `exit status 124`) and you'll get a polite-but-firm
+warning from admins.
+
+Override the three job-handling commands so ecFlow submits to PBS and
+talks to PBS for kill / status:
+
+```bash
+ecflow_client --alter add variable ECF_JOB_CMD    "qsub %ECF_JOB% 1> %ECF_JOBOUT% 2>&1" /gfs_c96
+ecflow_client --alter add variable ECF_KILL_CMD   "qdel %ECF_RID%"                      /gfs_c96
+ecflow_client --alter add variable ECF_STATUS_CMD "qstat %ECF_RID% > %ECF_JOB%.stat 2>&1" /gfs_c96
+```
+
+Confirm by `--alter`-ing then watching `qstat -u $USER` after `--begin`:
+real PBS jobs should appear, with `S=R` (running) on a compute node, not
+as a process under your login-node UID.
+
 #### A subtle one: `ECF_FILES` and `ECF_INCLUDE` should be absolute
 
 The suite header sets these to `%HOMEgfs%/...`. In theory ecFlow expands
@@ -324,6 +346,7 @@ Each line carries the abort reason after `abort<:`. The common patterns:
 | `Could not open include file: .../head.h`            | Same, but for `ECF_INCLUDE`                  | Pin `ECF_INCLUDE` absolute                     |
 | `EcfFile::variableSubstitution: failed: '%X%'`       | Variable `X` not set anywhere on suite       | `--alter add variable X <value> /gfs_c96`      |
 | Task ran, then aborted partway                       | Real runtime failure (missing data, etc.)    | Read `${ECF_HOME}/<task path>.1`               |
+| `exited with status 124` after ~5 min                 | Job ran inline on the login node and was reaped | Set `ECF_JOB_CMD="qsub ..."` (Step 3 sub-block) |
 
 After fixing a structural cause, requeue:
 
@@ -398,6 +421,11 @@ ecflow_client --terminate=yes
 - **"I `ssh`'d to a different login node and now nothing works."** Your
   server lives on the original node. Either `ssh` back, or set `ECF_HOST`
   to that original node so the new shell aims correctly.
+- **"My job aborted with `exited with status 124` after a few minutes."**
+  ecFlow ran the job *on the login node* instead of submitting it to PBS,
+  and the system reaped it. Override `ECF_JOB_CMD`, `ECF_KILL_CMD`, and
+  `ECF_STATUS_CMD` per Step 3 so jobs go through `qsub`. (Running real
+  jobs on a login node will also earn you an admin warning.)
 - **"`ecflow_ui` won't open: Qt platform plugin xcb failed."** That's an
   X11 forwarding problem on your *terminal*, not an ecFlow problem. You
   don't need the GUI to run a suite — every check in this chapter uses
