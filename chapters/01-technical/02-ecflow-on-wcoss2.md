@@ -271,6 +271,39 @@ Confirm by `--alter`-ing then watching `qstat -u $USER` after `--begin`:
 real PBS jobs should appear, with `S=R` (running) on a compute node, not
 as a process under your login-node UID.
 
+#### Critical: use a *dev-local* `head.h` and `tail.h`
+
+The shared `ecf/include/head.h` and `tail.h` in this repo are written
+for production. Inside `head.h` they call `module load prod_envir`,
+which on WCOSS2 silently re-points `ECF_HOST` and `ECF_PORT` at NCO's
+operational ecflow servers via `/lfs/h1/ops/prod/config/dhostfile`.
+
+Symptom: jobs reach the compute node, run cleanly, then `ecflow_client
+--init` (called from `head.h`) tries to talk to `cdecflow01:34637`
+and friends, walks the entire prod-server list, times out (`status 124`),
+and from ecFlow's perspective the task stays `submitted` forever even
+though PBS finished it.
+
+Fix: keep a dev-local copy of the includes that re-pin `ECF_HOST` /
+`ECF_PORT` after the module loads, and point `ECF_INCLUDE` at that
+directory instead of the shared one.  In the C96 suite this lives at
+`dev/ecf/c96/include/`. The relevant patch in both `head.h` and `tail.h`
+is just a few lines, applied right before the `ecflow_client --init` /
+`--complete` call:
+
+```bash
+# C96 dev override: prod_envir loader silently overrides ECF_HOST/ECF_PORT
+# via /lfs/h1/ops/prod/config/dhostfile.  Re-pin them before the call.
+unset ECF_HOSTFILE
+export ECF_HOST=%ECF_LOGHOST%
+export ECF_PORT=%ECF_PORT%
+```
+
+If you see the abort log filling with `trying next host(cdecflow01:34637)
+... ddecflow02:34637 ...`, this is the issue. The suite-level
+`unset ECF_HOSTFILE` you ran in the *driver* shell does not propagate
+to the PBS job; the job is a fresh shell on a compute node.
+
 #### A subtle one: `ECF_FILES` and `ECF_INCLUDE` should be absolute
 
 The suite header sets these to `%HOMEgfs%/...`. In theory ecFlow expands
@@ -286,12 +319,25 @@ Directory ECF_FILES(%HOMEgfs%/dev/ecf/c96/scripts) does not exist
 If you see that, pin them to absolute paths:
 
 ```bash
-ecflow_client --alter change variable ECF_INCLUDE "${HOMEgfs}/ecf/include"        /gfs_c96/primary
+ecflow_client --alter change variable ECF_INCLUDE "${HOMEgfs}/dev/ecf/c96/include" /gfs_c96/primary
 ecflow_client --alter change variable ECF_FILES   "${HOMEgfs}/dev/ecf/c96/scripts" /gfs_c96/primary
 ```
 
 The `change` (vs `add`) matters: the variable already exists at this scope,
 you're rewriting it. `add` would error.
+
+Confirm the result with `--query`:
+
+```bash
+ecflow_client --query variable /gfs_c96/primary:ECF_INCLUDE
+```
+
+If the printed value still starts with a `/` followed by `dev/ecf/...`
+(e.g. `/dev/ecf/c96/include`), the substitution leaked: `%HOMEgfs%`
+was empty when ecFlow expanded the variable. That's still wrong even
+though it looks structurally correct -- the suite will fail to find
+the include files. Re-run the `change` command with the absolute
+path explicit.
 
 ### Step 4 — Begin only the first cycle
 
@@ -347,6 +393,7 @@ Each line carries the abort reason after `abort<:`. The common patterns:
 | `EcfFile::variableSubstitution: failed: '%X%'`       | Variable `X` not set anywhere on suite       | `--alter add variable X <value> /gfs_c96`      |
 | Task ran, then aborted partway                       | Real runtime failure (missing data, etc.)    | Read `${ECF_HOME}/<task path>.1`               |
 | `exited with status 124` after ~5 min                 | Job ran inline on the login node and was reaped | Set `ECF_JOB_CMD="qsub ..."` (Step 3 sub-block) |
+| `trying next host(cdecflow01:34637) ...`              | `prod_envir` overrode `ECF_HOST`/`ECF_PORT` to ops servers via dhostfile | Use a dev-local `head.h`/`tail.h` that re-pins them; `ECF_INCLUDE` -> `dev/ecf/c96/include` |
 
 After fixing a structural cause, requeue:
 
@@ -356,6 +403,38 @@ ecflow_client --requeue=force /gfs_c96
 
 Requeue resets the affected tasks back to "queued." The server then
 re-evaluates triggers and re-submits whatever's eligible.
+
+### Reloading after a def or include change
+
+Editing the `.def` file or the include scripts on disk does **not**
+automatically update the running server. The server is operating off
+an in-memory copy of whatever `--load` last sent it. So after a `git
+pull` (or any local edit you want the server to see) you have to
+reload, *and re-add every `--alter` variable*, because deleting the
+suite drops them with it:
+
+```bash
+# 1. Replace the in-memory suite
+ecflow_client --delete=force=yes /gfs_c96
+ecflow_client --load=dev/ecf/c96/defs/gfs_c96.def
+ecflow_client --suspend=/gfs_c96
+
+# 2. Re-add the suite-level vars from Step 3 (every one of them)
+#    -- including ECF_JOB_CMD/ECF_KILL_CMD/ECF_STATUS_CMD
+
+# 3. Re-pin ECF_INCLUDE and ECF_FILES absolute (Step 3 last block)
+
+# 4. Resume + begin the cycles you want to run
+```
+
+It's easy to forget step 2.  The symptom is exactly the same set of
+`failed: '%X%'` aborts you saw on first load.  When in doubt, save
+the whole sequence as a small reload script and run it after every
+`--delete`.
+
+If you only edited an `.ecf` script, you don't need to reload: the
+next time the server renders that task (next submit, or a `--requeue`)
+it re-reads the file from disk.
 
 ### Step 7 — Release the next cycle
 
@@ -426,6 +505,16 @@ ecflow_client --terminate=yes
   and the system reaped it. Override `ECF_JOB_CMD`, `ECF_KILL_CMD`, and
   `ECF_STATUS_CMD` per Step 3 so jobs go through `qsub`. (Running real
   jobs on a login node will also earn you an admin warning.)
+- **"PBS finished my job but ecFlow says it's still `submitted`."** The
+  job's `--init` callback never reached your dev server. Look at the PBS
+  `.o<jobid>` file for `trying next host(cdecflow01:34637)`-style lines.
+  Cause: `prod_envir` re-aimed the client at the ops servers. Fix: use a
+  dev-local `head.h`/`tail.h` that re-exports `ECF_HOST=%ECF_LOGHOST%` and
+  `ECF_PORT=%ECF_PORT%` after the module loads.
+- **"`ECF_INCLUDE` looks like `/dev/ecf/c96/include`."** That's a
+  half-substituted path: `%HOMEgfs%` expanded to empty.  The suite will
+  not find `head.h`. Fix it with `--alter change variable ECF_INCLUDE
+  /full/absolute/path /gfs_c96/primary`.
 - **"qsub fails with `Error: Please include a valid walltime`."** That
   particular `.ecf` script is missing `#PBS -l walltime=...` (and probably
   the rest of the PBS preamble). Every `.ecf` that goes to `qsub` needs the
@@ -483,6 +572,10 @@ view across multiple operators. Tradeoffs.
   once" failures come down to one missing variable.
 - **Suspend before you begin.** Keep the safety belt on while you finish
   setting things up.
+- **The job lives on a compute node, not your login shell.** Anything
+  it depends on (env vars, paths, hostnames) must be set inside the
+  `.ecf` script or its includes -- the driver shell's exports do not
+  travel with it.
 - **`.ecf` script + variable expansion = the actual PBS job.** Read the
   rendered `.job0` file under `${ECF_HOME}` to see exactly what was
   submitted.
