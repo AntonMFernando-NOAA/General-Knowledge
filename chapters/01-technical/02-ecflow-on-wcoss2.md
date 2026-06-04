@@ -170,6 +170,11 @@ In every new SecureCRT tab, run:
 source ~/ecflow_c96.env
 ```
 
+> **Rocoto equivalent:** none required. Rocoto reads its database and
+> XML directly off disk; there's no host:port for clients to point at,
+> so an env file is unnecessary. You just `cd` into your experiment
+> directory and run `rocotorun -d <db> -w <xml>`.
+
 The `unset ECF_HOSTFILE` matters more than you'd think. WCOSS2 ships a
 system-wide `/lfs/h1/ops/prod/config/dhostfile` that points at production
 servers. If `ECF_PORT` is empty, ecflow_client falls back to that file and
@@ -199,6 +204,11 @@ ping server(dlogin01:2137) succeeded in ...
 
 That confirms the daemon is up and listening. The server is **persistent**:
 it survives logout. Next time you log in, just `--ping` and continue.
+
+> **Rocoto equivalent:** there's no "start" step. Rocoto runs as a
+> short-lived script invoked by cron (or by hand), so the engine only
+> exists for the few seconds it takes `rocotorun` to execute. There is
+> no daemon, no port, and no node-affinity to worry about.
 
 #### What if SecureCRT lands me on a different login node?
 
@@ -275,6 +285,11 @@ The last command should print `gfs_c96`. That confirms the load.
 If `--load` fails with "Expression node tree references failed", your
 `.def` file has a structural bug — typically a trigger pointing at a task
 that doesn't exist. Fix the def, requeue the load.
+
+> **Rocoto equivalent:** there's no "load" step. Rocoto re-reads the
+> XML on every `rocotorun` invocation, so editing the file *is* the
+> equivalent of reloading. The first `rocotorun` after creating the
+> SQLite database also acts as the implicit "begin."
 
 ### Step 3 — Set the suite-level variables
 
@@ -395,6 +410,12 @@ though it looks structurally correct -- the suite will fail to find
 the include files. Re-run the `change` command with the absolute
 path explicit.
 
+> **Rocoto equivalent:** all variables are set in the XML itself
+> (`<envar>`, `<cycledef>`, etc.) and re-read on every `rocotorun`.
+> There's no in-memory mutation step; you `vi workflow.xml`, save,
+> and the next run picks it up. No `--alter`, no re-applying overrides
+> after a reload.
+
 ### Step 4 — Begin only the first cycle
 
 If the suite has multiple cycles (here, 12Z cold-start then 00Z), only let
@@ -409,6 +430,13 @@ ecflow_client --begin=gfs_c96
 
 `--begin` flips the suite from "loaded" to "running." With 00Z still
 suspended, only 12Z's tasks actually go anywhere.
+
+> **Rocoto equivalent:** define your `<cycledef>` to cover only the
+> cycle(s) you want to run, then start `rocotorun` (or wait for the
+> cron). To freeze a future cycle without removing it, comment out
+> the relevant `<cycledef>` block, or restrict its date range.
+> There's no "resume/begin" toggle; presence in the XML is the
+> entire signal.
 
 ### Step 5 — Watch state
 
@@ -432,6 +460,12 @@ For PBS-side visibility:
 ```bash
 qstat -u "${USER}"
 ```
+
+> **Rocoto equivalent:** `rocotostat -d <db> -w <xml>` prints a
+> compact table of task states per cycle. Add `-c <cycle>` to scope
+> to one cycle, `-t <task>` to scope to one task. The same
+> `qstat -u` works on the scheduler side regardless of workflow
+> manager.
 
 ### Step 6 — Diagnose aborts
 
@@ -459,6 +493,18 @@ ecflow_client --requeue=force /gfs_c96
 
 Requeue resets the affected tasks back to "queued." The server then
 re-evaluates triggers and re-submits whatever's eligible.
+
+> **Rocoto equivalent:** to retry a task you reset its state and
+> tell Rocoto to submit it again, in two steps:
+>
+> ```bash
+> rocotorewind -d gfs.db -w workflow.xml -t MyTask -c 202606040000
+> rocotoboot   -d gfs.db -w workflow.xml -t MyTask -c 202606040000
+> ```
+>
+> `rocotorewind` clears the previous attempt from the database;
+> `rocotoboot` forces a fresh submission. The next `rocotorun`
+> picks up dependents.
 
 ### Reloading after a def or include change
 
@@ -492,6 +538,12 @@ If you only edited an `.ecf` script, you don't need to reload: the
 next time the server renders that task (next submit, or a `--requeue`)
 it re-reads the file from disk.
 
+> **Rocoto equivalent:** edit `workflow.xml` and save. The next
+> `rocotorun` parses the new XML and reconciles it against the
+> SQLite database. Variable changes, dependency edits, new tasks --
+> all picked up automatically. There's no "reload" command; the
+> file *is* the source of truth, every cycle.
+
 ### Step 7 — Release the next cycle
 
 When 12Z is fully green:
@@ -505,6 +557,11 @@ ecflow_client --resume=/gfs_c96/primary/00
 
 If your suite has a `cycle_end` task that handles the handoff, that's what
 will fire 00Z. Watch the same way.
+
+> **Rocoto equivalent:** Rocoto handles cycle progression automatically
+> from the `<cycledef>` ranges -- once a cycle's tasks are eligible
+> per its date and the cron schedule, `rocotorun` picks them up.
+> There's no manual "resume" step.
 
 ### Step 8 — Clean up
 
@@ -520,6 +577,13 @@ To kill the server entirely (only when you're done for the day or week):
 ```bash
 ecflow_client --terminate=yes
 ```
+
+> **Rocoto equivalent:** there's nothing to clean up at the engine
+> level. To stop a workflow, comment out its line in your crontab
+> (so `rocotorun` stops being invoked) and optionally `rm` the
+> SQLite database to forget state. To remove a single task across
+> all cycles you delete it from the XML; the next `rocotorun`
+> reconciles. No daemon to terminate.
 
 ---
 
