@@ -9,11 +9,6 @@ used on most NOAA development clusters. If you haven't, you can still read
 this; just treat Rocoto as "the simple case" and read straight on. If you
 have, the comparison should make ecFlow stop feeling alien.
 
-We'll explain ecFlow by comparing it with Rocoto where useful, highlighting
-similarities and differences as we go. Concepts tend to gain meaning from how
-they relate to other concepts rather than from isolated definitions—a point
-Saussure would agree with.
-
 By the end you should be able to start an ecFlow server on WCOSS2, load a
 suite into it, kick it off cycle by cycle, and diagnose the most common
 failures — including the half-dozen specific ones I burnt an afternoon
