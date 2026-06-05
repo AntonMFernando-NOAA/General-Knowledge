@@ -12,7 +12,7 @@ The book grows over time. Chapters are added as topics come up in real work.
 
 ### Chapter 2 — ecFlow
 - [2.1 Running an ecFlow Suite on WCOSS2](chapters/02-ecflow/01-running-a-suite-on-wcoss2.md)
-- [2.2 Setting Up an Experiment: Rocoto vs ecFlow](chapters/02-ecflow/02-experiment-setup.md)
+- [2.2 Development Setup: Rocoto vs ecFlow](chapters/02-ecflow/02-development-setup.md)
 
 _(more chapters to come)_
 
