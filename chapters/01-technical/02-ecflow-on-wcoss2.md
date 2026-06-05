@@ -75,13 +75,13 @@ ecflow_client --alter add variable ECF_LOGHOST    "${ECF_HOST}"     /gfs_c96
 ecflow_client --alter add variable ecflow_ver     5.6.0             /gfs_c96
 ecflow_client --alter add variable PDY            "$(date +%Y%m%d)" /gfs_c96
 ecflow_client --alter add variable PARATEST       NO                /gfs_c96
-ecflow_client --alter add variable COMPATH        ''                /gfs_c96
-ecflow_client --alter add variable MAILTO         ''                /gfs_c96
+ecflow_client --alter add variable COMPATH        ' '               /gfs_c96
+ecflow_client --alter add variable MAILTO         ' '               /gfs_c96
 ecflow_client --alter add variable DBNLOG         NO                /gfs_c96
 ecflow_client --alter add variable SENDDBN        NO                /gfs_c96
 ecflow_client --alter add variable SENDDBN_NTC    NO                /gfs_c96
 ecflow_client --alter add variable SENDCANNEDDBN  NO                /gfs_c96
-ecflow_client --alter add variable rrfs_ver       ''                /gfs_c96
+ecflow_client --alter add variable rrfs_ver       ' '               /gfs_c96
 
 ecflow_client --alter add variable ECF_JOB_CMD    "qsub %ECF_JOB% 1> %ECF_JOBOUT% 2>&1" /gfs_c96
 ecflow_client --alter add variable ECF_KILL_CMD   "qdel %ECF_RID%"                       /gfs_c96
