@@ -1,27 +1,19 @@
-# Chapter 1.2 — Running an ecFlow Suite (and how it differs from Rocoto)
+# Chapter 1.2 — Running an ecFlow Suite on WCOSS2
 
-> *Why running a small test suite on WCOSS2 starts with a process that
-> just sits there listening on a port — and what every command after
-> "module load ecflow" is actually telling that process to do.*
-
-This chapter assumes you have already met **Rocoto**, the workflow manager
-used on most NOAA development clusters. If you haven't, you can still read
-this; just treat Rocoto as "the simple case" and read straight on. If you
-have, the comparison should make ecFlow stop feeling alien.
-
-By the end you should be able to start an ecFlow server on WCOSS2, load a
-suite into it, kick it off cycle by cycle, and diagnose the most common
-failures — including the half-dozen specific ones I burnt an afternoon
-finding when I first did this.
+> *Start a server. Load a suite. Begin a cycle. Watch it run.
+> This chapter is the practical guide, the explanation, and the
+> Rocoto comparison — one thing at a time.*
 
 ---
 
-## Quick reference — commands only
+# Section 1 — Commands
 
-The full procedure with explanations is in [Section 4](#4-the-full-procedure-on-wcoss2).
-This section is just the commands, grouped by when you run them.
+Complete command sequence for running the C96 ecFlow suite on WCOSS2.
+No prose. If you want to understand what these do, read Section 2.
 
-### One-time: create the env file
+## 1.1 One-time setup
+
+### Save your environment
 
 ```bash
 cat > ~/ecflow_c96.env <<'EOF'
@@ -34,846 +26,512 @@ export HOMEgfs=/lfs/h2/emc/global/noscrub/${USER}/global-workflow_gfsv17
 EOF
 ```
 
-### Every new terminal
+### Install Xming on your Windows laptop (for the GUI)
+
+Download and run the installer from https://sourceforge.net/projects/xming/
+(user-space install; no admin rights needed).
+Then in SecureCRT session config → Connection → Port Forwarding → Remote/X11
+→ enable "Forward X11 packets".
+Test: `echo $DISPLAY` should print `localhost:10.0` or similar after login.
+
+## 1.2 Every new terminal on WCOSS2
 
 ```bash
 source ~/ecflow_c96.env
+ecflow_client --host=dlogin01 --port=2137 --ping
 ```
 
-### Start the server (once; survives logout)
+Expected: `ping server(dlogin01:2137) succeeded`.
+
+## 1.3 Start the ecflow_server (once per WCOSS2 session; survives logout)
 
 ```bash
 ssh dlogin01
 source ~/ecflow_c96.env
 mkdir -p "${ECF_HOME}"
 ecflow_start.sh -p "${ECF_PORT}" -d "${ECF_HOME}"
-ecflow_client --ping
+ecflow_client --host=dlogin01 --port=2137 --ping
 ```
 
-On subsequent logins, just ping — no need to restart:
+On subsequent logins the server is already running; just `--ping` to confirm.
+
+Find the port if you forgot it:
+
+```bash
+ls /lfs/h2/emc/global/noscrub/${USER}/ecflow_c96/
+# look for files named dlogin01.NNNN.check — NNNN is the port
+```
+
+## 1.4 Open the GUI (optional but useful)
+
+Enable Xming on Windows, then:
 
 ```bash
 source ~/ecflow_c96.env
-ecflow_client --ping
+ecflow_ui &
+# In GUI: Servers → Manage Servers → Add server
+# Name: c96   Host: dlogin01   Port: 2137
 ```
 
-### Load the suite
+## 1.5 Load the suite
 
 ```bash
 cd "${HOMEgfs}"
-ecflow_client --delete=force=yes /gfs_c96 2> /dev/null
-ecflow_client --load=dev/ecf/c96/defs/gfs_c96.def
-ecflow_client --suspend=/gfs_c96
-ecflow_client --suites
+ecflow_client --host=dlogin01 --port=2137 --delete=force=yes /gfs_c96 2> /dev/null
+ecflow_client --host=dlogin01 --port=2137 --load=dev/ecf/c96/defs/gfs_c96.def
+ecflow_client --host=dlogin01 --port=2137 --suspend=/gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --suites
 ```
 
-### Set suite variables (re-run every time you reload)
+Expected: `gfs_c96`.
+
+## 1.6 Bootstrap: set all suite variables
+
+Run once after every `--load` (because `--delete` wiped them):
 
 ```bash
-ecflow_client --alter add variable HOMEgfs        "${HOMEgfs}"      /gfs_c96
-ecflow_client --alter add variable ECF_LOGHOST    "${ECF_HOST}"     /gfs_c96
-ecflow_client --alter add variable ecflow_ver     5.6.0             /gfs_c96
-ecflow_client --alter add variable PDY            "$(date +%Y%m%d)" /gfs_c96
-ecflow_client --alter add variable PARATEST       NO                /gfs_c96
-ecflow_client --alter add variable COMPATH        ' '               /gfs_c96
-ecflow_client --alter add variable MAILTO         ' '               /gfs_c96
-ecflow_client --alter add variable DBNLOG         NO                /gfs_c96
-ecflow_client --alter add variable SENDDBN        NO                /gfs_c96
-ecflow_client --alter add variable SENDDBN_NTC    NO                /gfs_c96
-ecflow_client --alter add variable SENDCANNEDDBN  NO                /gfs_c96
-ecflow_client --alter add variable rrfs_ver       ' '               /gfs_c96
+cd "${HOMEgfs}"
+bash dev/ecf/c96/bootstrap.sh
+```
 
-ecflow_client --alter add variable ECF_JOB_CMD    "qsub %ECF_JOB% 1> %ECF_JOBOUT% 2>&1" /gfs_c96
-ecflow_client --alter add variable ECF_KILL_CMD   "qdel %ECF_RID%"                       /gfs_c96
-ecflow_client --alter add variable ECF_STATUS_CMD "qstat %ECF_RID% > %ECF_JOB%.stat 2>&1" /gfs_c96
+This creates the dev workspace directories and applies all `--alter` overrides.
 
+Or manually if you prefer to see every command:
+
+```bash
+ecflow_client --host=dlogin01 --port=2137 --alter add variable HOMEgfs        "${HOMEgfs}"      /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable ECF_LOGHOST    "${ECF_HOST}"     /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable ecflow_ver     5.6.0             /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable PDY            "$(date +%Y%m%d)" /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable PARATEST       NO                /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable COMPATH        ""                /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable MAILTO         ""                /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable DBNLOG         NO                /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable SENDDBN        NO                /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable SENDDBN_NTC    NO                /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable SENDCANNEDDBN  NO                /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable rrfs_ver       ""                /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable DATAROOT       "/lfs/h2/emc/global/noscrub/${USER}/c96_run/tmp" /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable COMROOT        "/lfs/h2/emc/global/noscrub/${USER}/c96_run/com" /gfs_c96
+
+ecflow_client --host=dlogin01 --port=2137 --alter add variable ECF_JOB_CMD    "qsub %ECF_JOB% 1> %ECF_JOBOUT% 2>&1"           /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable ECF_KILL_CMD   "qdel %ECF_RID%"                                 /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable ECF_STATUS_CMD "qstat %ECF_RID% > %ECF_JOB%.stat 2>&1"         /gfs_c96
+
+ecflow_client --host=dlogin01 --port=2137 --alter change variable ECF_INCLUDE "${HOMEgfs}/dev/ecf/c96/include" /gfs_c96/primary
+ecflow_client --host=dlogin01 --port=2137 --alter change variable ECF_FILES   "${HOMEgfs}/dev/ecf/c96/scripts" /gfs_c96/primary
+
+# Verify paths resolved:
+ecflow_client --host=dlogin01 --port=2137 --query variable /gfs_c96/primary:ECF_INCLUDE
+ecflow_client --host=dlogin01 --port=2137 --query variable /gfs_c96/primary:ECF_FILES
+```
+
+Both should print full `/lfs/h2/emc/...` paths. If they start with `/dev/ecf/...` (no leading full path), `HOMEgfs` was empty during load — repin them.
+
+## 1.7 Begin the run (12Z first, 00Z suspended)
+
+```bash
+ecflow_client --host=dlogin01 --port=2137 --suspend=/gfs_c96/primary/00
+ecflow_client --host=dlogin01 --port=2137 --resume=/gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --resume=/gfs_c96/primary/12
+ecflow_client --host=dlogin01 --port=2137 --begin=gfs_c96
+qstat -u "${USER}"
+```
+
+## 1.8 Watch state
+
+```bash
+# ecFlow's view (run repeatedly):
+ecflow_client --host=dlogin01 --port=2137 --get_state /gfs_c96/primary/12 \
+  | grep -oE "state:[a-z]+" | sort | uniq -c
+
+# PBS's view:
+qstat -u "${USER}"
+```
+
+Healthy: counts shift from `queued` → `submitted` → `active` → `complete`.
+
+## 1.9 Diagnose aborts
+
+```bash
+# Which tasks aborted and why:
+ecflow_client --host=dlogin01 --port=2137 --get_state /gfs_c96/primary/12 \
+  | grep "state:aborted" | head -5
+
+# Job output file (for a specific task):
+cat "${ECF_HOME}/gfs_c96/primary/12/gfs/prep/atmos/jgfs_atmos_prep_fsm.1"
+
+# PBS output file (named <jobname>.o<jobid>; find recent ones):
+ls -lt /lfs/h2/emc/global/noscrub/${USER}/ecflow_c96/*.o* | head -5
+
+# Requeue after fixing:
+ecflow_client --host=dlogin01 --port=2137 --requeue=force /gfs_c96
+```
+
+## 1.10 Reload after a code change
+
+```bash
+git pull origin feature/gfsv17-ecflow
+ecflow_client --host=dlogin01 --port=2137 --delete=force=yes /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --load=dev/ecf/c96/defs/gfs_c96.def
+ecflow_client --host=dlogin01 --port=2137 --suspend=/gfs_c96
+bash dev/ecf/c96/bootstrap.sh              # re-apply all variables
+# then 1.7 again
+```
+
+## 1.11 Release 00Z (after 12Z completes)
+
+```bash
+# Confirm 12Z is fully done:
+ecflow_client --host=dlogin01 --port=2137 --get_state /gfs_c96/primary/12 \
+  | grep -oE "state:[a-z]+" | sort | uniq -c
+# expect: N state:complete, nothing else
+
+# Release:
+ecflow_client --host=dlogin01 --port=2137 --resume=/gfs_c96/primary/00
+```
+
+## 1.12 Clean up
+
+```bash
+# Remove suite from server (files on disk untouched):
+ecflow_client --host=dlogin01 --port=2137 --delete=force=yes /gfs_c96
+
+# Stop the server entirely (only when fully done):
+ecflow_client --host=dlogin01 --port=2137 --terminate=yes
+```
+
+---
+
+# Section 2 — Explanations
+
+This section explains what each command in Section 1 is doing and why it
+has to be done that way.
+
+## 2.1 Why there's a server at all
+
+ecFlow keeps your workflow's state (which tasks are queued, running, done,
+failed) in a long-running background process called `ecflow_server`. It
+listens on a TCP port. All clients — the CLI tool `ecflow_client`, the GUI
+`ecflow_ui`, and the ecflow calls inside running PBS jobs — talk to it over
+that port.
+
+Without a server, there's nowhere for state to live, nowhere for `--init`
+and `--complete` callbacks from jobs to land, and no way to query what's
+running.
+
+Compare to Rocoto, which stores state in a SQLite file on disk and has no
+server. Rocoto re-derives state from that file every 5 minutes when cron
+invokes `rocotorun`. The tradeoff: Rocoto has no real-time GUI and no push
+notifications when a task finishes; ecFlow has both.
+
+## 2.2 What `ECF_HOST` and `ECF_PORT` are
+
+Every client command has to know which server to talk to. Those two variables
+are the host and the port. If they're not set correctly the client falls back
+to the production `dhostfile` (`/lfs/h1/ops/prod/config/dhostfile`) which
+points at NCO's operational servers on port 34637 — not yours.
+
+That's why the env file starts with `unset ECF_HOSTFILE`: clear the fallback
+before pointing the client at your server.
+
+The `--host=dlogin01 --port=2137` flags in every command above are redundant
+once you've `source ~/ecflow_c96.env`, but they're explicit, which removes
+any ambiguity about which server you're hitting.
+
+## 2.3 What the server checkpoint files are
+
+The server writes its state to files in `ECF_HOME` at regular intervals.
+The filenames are `<host>.<port>.check` and `<host>.<port>.ecf.log`. That's
+how you find your port if you forget it. When the server restarts (after a
+crash or a manual `terminate`/`start`), it reads those checkpoint files and
+restores the suite's state.
+
+## 2.4 What `--load` does
+
+`--load` sends the `.def` file to the running server. The server parses it,
+validates all triggers, and stores the suite tree in memory. Nothing runs yet.
+
+The suite tree is a "loaded" copy in memory, not a live reference to the file
+on disk. If you edit the `.def` file later, the server doesn't know. You have
+to `--delete` and `--load` again to update it.
+
+If `--load` fails with "Expression node tree references failed for trigger
+../path/task", it means a trigger in the def points at a task or family that
+doesn't exist in the suite. Fix the def and reload.
+
+## 2.5 Why `--suspend` before `--begin`
+
+`--begin` starts the suite running. Without `--suspend` first, the server
+could start submitting jobs while you're still applying variable overrides in
+the next step. Suspend freezes the whole suite so nothing runs until you say
+`--resume`.
+
+## 2.6 Why there are so many `--alter add variable` commands
+
+ecFlow substitutes `%VAR%` placeholders in `.ecf` scripts at job-render time.
+If `VAR` isn't defined on the suite (or any of its parent families), the
+substitution fails and the task aborts immediately with:
+
+```
+EcfFile::variableSubstitution: failed: '%VAR%'
+```
+
+The `.def` file sets some variables at the suite level, but the production
+`head.h` references many more that NCO's `prod_envir` module normally provides.
+Running on a personal dev server means `prod_envir` is not available, so you
+add them manually. `bootstrap.sh` does all of this in one run.
+
+## 2.7 Why ECF_JOB_CMD must be set explicitly
+
+By default, ecFlow runs job scripts inline (directly on the login node):
+
+```
+%ECF_JOB% 1> %ECF_JOBOUT% 2>&1
+```
+
+That means jobs run on `dlogin01` itself, which is prohibited and gets you an
+admin warning. The WCOSS2 production ecFlow setup normally points this at a
+queue-submission wrapper that calls `qsub`. On a dev server that automatic
+override isn't present, so you set it manually:
+
+```
+ecflow_client --alter add variable ECF_JOB_CMD "qsub %ECF_JOB% 1> %ECF_JOBOUT% 2>&1" /gfs_c96
+```
+
+After that, ecFlow calls `qsub` for each ready task, which puts the job on the
+compute cluster properly.
+
+## 2.8 Why ECF_INCLUDE and ECF_FILES need absolute paths
+
+The `.def` file sets these as:
+
+```
+edit ECF_INCLUDE '%HOMEgfs%/dev/ecf/c96/include'
+edit ECF_FILES   '%HOMEgfs%/dev/ecf/c96/scripts'
+```
+
+ecFlow expands `%HOMEgfs%` at job-render time. If the server processes these
+*before* you've added `HOMEgfs` with `--alter`, the substitution produces an
+empty string and the paths become `/dev/ecf/c96/include` — which doesn't exist.
+
+The safe fix: always explicitly pin them to absolute paths after loading:
+
+```bash
 ecflow_client --alter change variable ECF_INCLUDE "${HOMEgfs}/dev/ecf/c96/include" /gfs_c96/primary
-ecflow_client --alter change variable ECF_FILES   "${HOMEgfs}/dev/ecf/c96/scripts" /gfs_c96/primary
-
-ecflow_client --query variable /gfs_c96/primary:ECF_INCLUDE
-ecflow_client --query variable /gfs_c96/primary:ECF_FILES
 ```
 
-### Begin only the 12Z cycle
+Run `--query variable /gfs_c96/primary:ECF_INCLUDE` to confirm the value starts
+with `/lfs/h2/...`.
+
+## 2.9 Why `head.h` needs its own dev-local copy
+
+The production `ecf/include/head.h` calls `module load prod_envir` inside the
+PBS job on the compute node. That module re-points `ECF_HOST` and `ECF_PORT`
+at the NCO production servers (`cdecflow01:34637`, etc.) by loading the
+production `dhostfile`.
+
+The job then calls `ecflow_client --init` to signal that it started. But with
+the clobbered `ECF_HOST`/`ECF_PORT`, the call goes to NCO's servers, which
+refuse the connection. The task stays stuck in `submitted` state indefinitely
+even though the PBS job ran and finished.
+
+The fix: a dev-local `dev/ecf/c96/include/head.h` that re-asserts the correct
+host/port after all module loads, right before the `--init` call:
 
 ```bash
-ecflow_client --suspend=/gfs_c96/primary/00
-ecflow_client --resume=/gfs_c96
-ecflow_client --resume=/gfs_c96/primary/12
-ecflow_client --begin=gfs_c96
-qstat -u $USER
+unset ECF_HOSTFILE
+export ECF_HOST=%ECF_LOGHOST%
+export ECF_PORT=%ECF_PORT%
+timeout 300 ecflow_client --init=${ECF_RID}
 ```
 
-### Watch state
+The same re-pin is applied in `tail.h` before the `--complete` call.
+
+## 2.10 What "submitted → active → complete" means
+
+When ecFlow decides a task is eligible (all triggers satisfied), it:
+
+1. Renders the `.ecf` script (variable substitution → `.job0` file).
+2. Calls `ECF_JOB_CMD` (`qsub`) → PBS accepts the job: task goes to
+   **submitted**.
+3. The PBS job starts on a compute node, runs `head.h`, which calls
+   `ecflow_client --init`. Server flips task to **active**.
+4. The job runs the actual J-script (e.g. `JGLOBAL_FORECAST`).
+5. Job reaches `tail.h`, which calls `ecflow_client --complete`. Server flips
+   task to **complete** and re-evaluates all triggers. Downstream tasks that
+   were waiting on this one become eligible.
+6. If the job crashes before `tail.h`, the `trap "ERROR $?" ERR EXIT` in
+   `head.h` calls `ecflow_client --abort`. Task goes to **aborted**. Dependent
+   tasks don't start.
+
+The state transition `submitted → (never active)` means PBS ran the job but
+the `--init` callback never reached your server. Almost always this is the
+`prod_envir`/dhostfile issue described in 2.9.
+
+## 2.11 Common failure patterns
+
+| What you see | Root cause | Fix |
+|---|---|---|
+| `failed: '%VAR%'` on load | Variable not set on suite | Add it with `--alter add variable` |
+| `Directory ECF_FILES(%HOMEgfs%/...) does not exist` | Substitution failed before `HOMEgfs` was added | Pin absolute paths with `--alter change` |
+| `submitted` but never `active`, PBS shows no job | `ECF_JOB_CMD` not set; ran inline on login node | Add `ECF_JOB_CMD qsub ...` |
+| `submitted` but never `active`, PBS job did run | `prod_envir` clobbered `ECF_HOST`/`ECF_PORT` | Use dev-local `head.h`/`tail.h` with re-pin |
+| `exited with status 124` | 5-min inline run timeout on login node | Same: set `ECF_JOB_CMD` |
+| `qsub: Error: Please include a valid walltime` | `.ecf` script missing PBS header | Every `.ecf` needs `#PBS -l walltime=...` etc. |
+| Task `active` but PBS shows nothing, stuck forever | Job finished but `--complete` didn't reach server | Same dhostfile issue in `tail.h`; re-pin host/port |
+| `No such file or directory: .../jobs/JGLOBAL_*` | `jobs/` symlink missing; J-scripts are in `dev/jobs/` | `ln -s dev/jobs jobs` at repo root (already committed) |
+| `/lfs/f1/ops/prod/tmp: No such file or directory` | `DATAROOT` points at ops-only filesystem | Set `DATAROOT` to your noscrub area; `bootstrap.sh` does this |
+| "Connection refused on port 34637" | `ECF_PORT` not set; client used production dhostfile | `unset ECF_HOSTFILE; export ECF_HOST=dlogin01; export ECF_PORT=2137` |
+
+## 2.12 What to do when on a different login node
+
+WCOSS2 round-robins logins to `dlogin01`–`dlogin04`. Your server is on
+whichever node you started it from. From any other login node, you can still
+reach it because all nodes share the internal network:
 
 ```bash
-ecflow_client --get_state /gfs_c96/primary/12 \
-  | grep -oE "state:[a-z]+" | sort | uniq -c
-```
-
-### Diagnose failures
-
-```bash
-ecflow_client --get_state /gfs_c96/primary/12 | grep "state:aborted"
-```
-
-Requeue after fixing:
-
-```bash
-ecflow_client --requeue=force /gfs_c96
-```
-
-### Release 00Z (after 12Z is complete)
-
-```bash
-ecflow_client --get_state /gfs_c96/primary/12 \
-  | grep -oE "state:[a-z]+" | sort | uniq -c
-# expect: N state:complete
-
-ecflow_client --resume=/gfs_c96/primary/00
-```
-
-### Clean up
-
-```bash
-# Remove suite from server memory (files on disk untouched):
-ecflow_client --delete=force=yes /gfs_c96
-
-# Shut down the server entirely:
-ecflow_client --terminate=yes
-```
-
----
-
-## 1. The one big difference
-
-Both Rocoto and ecFlow do the same job: take a bunch of jobs, figure out
-the order, submit them to the scheduler, watch them run, retry failures.
-But one of them does it without any background process at all. The other
-won't lift a finger unless you start a process first.
-
-```
-Rocoto                                ecFlow
-------                                ------
-[ workflow.xml ]                      [ ecflow_server (always running) ]
-       |                                          |
-       v                                          | TCP port (e.g. 2137)
-[ rocotorun  ]   <-- cron                +--------+--------+
-       |        every 5 min              v                 v
-[ SQLite DB  ]                  [ ecflow_client ]  [ ecflow_ui ]
-       |                                  |                 |
-       v                                  v                 v
-[ qsub jobs  ]                       [ qsub jobs ]   (you click things)
-```
-
-**Rocoto is cron + a database.** It wakes up every five minutes, reads an
-XML file, reads a SQLite database, asks the scheduler what's running,
-submits whatever's now eligible, writes state back, and exits. Total
-"engine" lifetime: a few seconds, every five minutes.
-
-**ecFlow is a database server + a GUI.** A long-running daemon called
-`ecflow_server` holds the entire workflow state in RAM and listens on a
-network port. Anything that wants to ask "what's running?" or say "this
-job just finished" connects to that port over TCP. Engine lifetime:
-forever, until you kill it.
-
-Why the difference? ecFlow was built by ECMWF for ops centers where
-operators stare at a colored tree of tasks 24/7 and need sub-second
-responses when they click something. Cron-polling can't deliver that.
-Rocoto was built for research groups iterating on workflows without
-24/7 monitoring. Different needs, different design.
-
----
-
-## 2. Apartment analogy refresher
-
-If Chapter 1.1 made the "port = apartment number" picture stick, ecFlow
-fits right into it. The server lives in *one* apartment of *one* computer.
-Every client knocks on that exact door.
-
-```
-   ┌─────────────────────────────────────────────┐
-   │                  dlogin01                   │
-   │                                             │
-   │   ...   Apt 22   Apt 80   ...   Apt 2137    │
-   │         SSH      Web            ecflow_     │
-   │                                 server      │
-   └─────────────────────────────────────────────┘
-        client points at:  dlogin01 : 2137
-                              host    port
-```
-
-Everything you'll do is some variation of "send a message to apartment 2137
-on dlogin01." That's why the recurring incantation is:
-
-```bash
-export ECF_HOST=dlogin01
+export ECF_HOST=dlogin01   # the node you started the server on
 export ECF_PORT=2137
 ecflow_client --ping
 ```
 
-If you forget either of those, the client falls back to looking at a
-system-wide hostfile and ends up knocking on a wrong door (often a
-production-ops door it doesn't have keys for), and you get cryptic
-"Connection refused on port 34637" errors.
+The `--ping` command connects *across* nodes with no issues.
+
+If you genuinely need to move the server to a different node, stop it
+(`--terminate=yes`) and `ecflow_start.sh` on the new node. Update
+`~/ecflow_c96.env` to match.
+
+## 2.13 What the GUI shows (ecflow_ui)
+
+The GUI draws the suite as a colored tree:
+
+- **Grey**: queued (waiting for dependencies)
+- **Cyan**: submitted (in PBS queue)
+- **Blue**: active (running on compute node)
+- **Green**: complete
+- **Red**: aborted
+
+Right-click any task to view its generated job script, output log, variables,
+or to requeue it. This is the equivalent of reading `rocotostat` output, but
+interactive and real-time. You need Xming (Windows) or X11 forwarding to see
+it. The CLI path works without it.
 
 ---
 
-## 3. Vocabulary, side by side
+# Section 3 — Rocoto comparison
 
-| Idea                   | Rocoto                                   | ecFlow                                       |
-|------------------------|------------------------------------------|----------------------------------------------|
-| The whole workflow     | XML file                                 | suite (defined in a `.def` file)             |
-| Grouping of tasks      | metatask                                 | family                                       |
-| Unit of work           | task                                     | task                                         |
-| Submitted script       | `<command>` in XML                       | a `.ecf` file under `ECF_FILES`              |
-| Time-stepped runs      | `<cycledef>`                             | repeat clauses, or one family per cycle      |
-| Dependency             | `<taskdep .../>`                         | `trigger ../foo == complete`                 |
-| State persistence      | SQLite file                              | server checkpoint files in `ECF_HOME`        |
-| What kicks the engine  | cron running `rocotorun`                 | the server is always running                 |
-| How you check status   | `rocotostat`                             | `ecflow_client --get_state` or `ecflow_ui`   |
-| How you fix a stuck task | `rocotorewind` then `rocotoboot`       | `ecflow_client --requeue=force`              |
-
-A few of these deserve more than a row in a table.
-
-### `.ecf` scripts vs Rocoto's `<command>`
-
-In Rocoto, the XML embeds the actual job command. In ecFlow, the `.def`
-just *names* a task; the script lives in a separate `.ecf` file at a
-predictable path. When the server decides a task is ready, it:
-
-1. Finds the `.ecf` file by combining `ECF_FILES` and the task's path in
-   the suite tree (e.g. `${ECF_FILES}/gfs/forecast/jgfs_fcst.ecf`).
-2. Reads it line by line, expanding any `%VARIABLE%` placeholders.
-3. Drops the result into a real shell script under `${ECF_HOME}` named
-   `<task>.job0`.
-4. Runs `${ECF_JOB_CMD}` (which on WCOSS2 is `qsub`) on that file.
-
-That `.job0` file is what you'd `cat` if you wanted to see exactly what
-PBS got asked to run.
-
-### Triggers are state, not files
+## 3.1 Architecture
 
 ```
-trigger ../analysis/jgfs_atmos_anal == complete
+Rocoto                                ecFlow
+──────                                ──────
+[ workflow.xml ]                      [ ecflow_server — always running ]
+       │                                          │
+       v  (every 5 min via cron)                  │ TCP port (e.g. 2137)
+[ rocotorun  ]                            ┌───────┴───────┐
+       │                                  v               v
+[ gfs.db     ]                    [ ecflow_client ]  [ ecflow_ui ]
+       │                                  │               │
+       v                                  v               v
+[ qsub/sbatch ]                       [ qsub (PBS) ]   (GUI, colored tree)
 ```
 
-That does **not** mean "wait until some output file appears." It means
-"wait until the ecFlow server's view of that other task says it's
-complete." The state lives entirely in the server's memory. So if you
-`--requeue` a task, every dependent task that already ran also goes back
-to queued, because the server now treats it as "not complete anymore."
-
-### `%VARIABLE%` substitution
-
-ecFlow has its own templating language. When the server renders a `.ecf`
-script, any `%FOO%` it finds gets replaced with the value of `FOO` set on
-the task, or if not, on the parent family, then the suite, then the
-server's default list. If `FOO` is not set anywhere, the substitution
-**fails** and the task aborts before ever running. That's the most common
-"why did my freshly-loaded suite immediately abort everything?" cause.
-
----
-
-## 4. The full procedure on WCOSS2
-
-This is the script I wish I'd had on my first attempt. Each step is
-labeled with what could plausibly go wrong and how to fix it.
-
-### Step 0 — One-time setup: make a personal env file
-
-```bash
-cat > ~/ecflow_c96.env <<'EOF'
-unset ECF_HOSTFILE
-module load ecflow          # also auto-sets ECF_PORT to the system default
-export ECF_HOST=dlogin01   # override: your personal dev server lives here
-export ECF_PORT=2137        # override: your personal dev server port
-export ECF_HOME=/lfs/h2/emc/global/noscrub/${USER}/ecflow_c96
-export HOMEgfs=/lfs/h2/emc/global/noscrub/${USER}/global-workflow_gfsv17
-EOF
-```
-
-> **Note — shared ops server vs personal dev server.** The official WCOSS2
-> guidance points `ECF_HOST` at `cdecflow01` — a dedicated ecflow server
-> maintained by NCO that the ops suite runs against. When you do that,
-> there's no `ecflow_start.sh` step because the server is already running.
-> This chapter uses `dlogin01` because you're running a **personal dev
-> server** on your own port (2137) that you started yourself. The commands
-> are identical; only the host and port differ.
-
-In every new SecureCRT tab, run:
-
-```bash
-source ~/ecflow_c96.env
-```
-
-> **Rocoto equivalent:** none required. Rocoto reads its database and
-> XML directly off disk; there's no host:port for clients to point at,
-> so an env file is unnecessary. You just `cd` into your experiment
-> directory and run `rocotorun -d <db> -w <xml>`.
-
-The `unset ECF_HOSTFILE` matters more than you'd think. WCOSS2 ships a
-system-wide `/lfs/h1/ops/prod/config/dhostfile` that points at production
-servers. If `ECF_PORT` is empty, ecflow_client falls back to that file and
-silently aims at the wrong host. You'll see "Failed to connect to
-localhost:34637" or "Connection refused on port 34637" with no clue why.
-The unset short-circuits that fallback.
-
-### Step 1 — Start the server
-
-`ssh` to `dlogin01` and stay there. The server is bound to whatever node
-you start it from. SSH'ing to a different login node mid-session breaks
-`localhost` resolution and confuses the client.
-
-```bash
-ssh dlogin01
-source ~/ecflow_c96.env
-mkdir -p "${ECF_HOME}"
-ecflow_start.sh -p "${ECF_PORT}" -d "${ECF_HOME}"
-ecflow_client --ping
-```
-
-You should see:
-
-```
-ping server(dlogin01:2137) succeeded in ...
-```
-
-That confirms the daemon is up and listening. The server is **persistent**:
-it survives logout. Next time you log in, just `--ping` and continue.
-
-> **Rocoto equivalent:** there's no "start" step. Rocoto runs as a
-> short-lived script invoked by cron (or by hand), so the engine only
-> exists for the few seconds it takes `rocotorun` to execute. There is
-> no daemon, no port, and no node-affinity to worry about.
-
-#### What if SecureCRT lands me on a different login node?
-
-It will. WCOSS2's generic hostnames (`cactus.wcoss2.ncep.noaa.gov`,
-`dogwood.wcoss2.ncep.noaa.gov`) round-robin to whatever login node has
-capacity — `dlogin01`, `dlogin02`, etc. So the next time you connect
-you may land on `dlogin02` instead of `dlogin01`. **Your server is
-still on `dlogin01`**, the node it was started from. Don't restart it,
-don't move it; just *aim the client at it from wherever you are*.
-
-All login nodes can talk to each other on the internal network, so
-from any new shell:
-
-```bash
-source ~/ecflow_c96.env       # ECF_HOST is hard-coded to dlogin01
-ecflow_client --ping
-```
-
-should still print `ping server(dlogin01:2137) succeeded`. The fact that
-you happen to be sitting on `dlogin02` is irrelevant -- `ECF_HOST` says
-`dlogin01` and TCP knows how to find it.
-
-Two things to watch for when you cross nodes:
-
-1. **Don't trust `--ping` without explicit flags after a fresh shell.**
-   If anything in the shell startup re-points the client at the production
-   `dhostfile`, the bare `--ping` lands on the wrong port. The defensive
-   form is unambiguous and works from anywhere:
-
-   ```bash
-   ecflow_client --host=dlogin01 --port=2137 --ping
-   ```
-
-   Use `--host` and `--port` on every command if you want zero ambiguity
-   about which server you're talking to. The whole step-by-step procedure
-   above does this for safety.
-2. **The server will outlive your shell.** Running `ssh dlogin01` from
-   another node connects you to the same machine the server is on, but
-   killing your terminal session does not kill the server. `ecflow_start.sh`
-   detaches the server from your shell with `nohup`. To actually stop it
-   you have to send `--terminate=yes` explicitly.
-
-If you ever genuinely want to start over on a fresh login node (because
-the original is being drained, or you forgot which one you used), do the
-moving deliberately:
-
-```bash
-ssh dlogin01
-ecflow_client --terminate=yes        # stop the old server
-ssh dlogin02
-source ~/ecflow_c96.env              # then edit ECF_HOST=dlogin02 first
-ecflow_start.sh -p "${ECF_PORT}" -d "${ECF_HOME}"
-```
-
-And update `~/ecflow_c96.env` to point at the new node so you don't keep
-fighting the old hostname.
-
-### Step 2 — Load the suite, suspended
-
-```bash
-cd "${HOMEgfs}"
-ecflow_client --delete=force=yes /gfs_c96 2> /dev/null
-ecflow_client --load=dev/ecf/c96/defs/gfs_c96.def
-ecflow_client --suspend=/gfs_c96
-ecflow_client --suites
-```
-
-`--load` parses the `.def` file and registers the suite in the server's
-memory. **No jobs are submitted yet.** `--suspend` is a safety belt that
-prevents anything from auto-submitting even after the begin step.
-
-The last command should print `gfs_c96`. That confirms the load.
-
-If `--load` fails with "Expression node tree references failed", your
-`.def` file has a structural bug — typically a trigger pointing at a task
-that doesn't exist. Fix the def, requeue the load.
-
-> **Rocoto equivalent:** there's no "load" step. Rocoto re-reads the
-> XML on every `rocotorun` invocation, so editing the file *is* the
-> equivalent of reloading. The first `rocotorun` after creating the
-> SQLite database also acts as the implicit "begin."
-
-### Step 3 — Set the suite-level variables
-
-This is the step that bit me hardest. The production GFSv17 def assumes a
-bunch of variables are set by NCO's machinery on the real ops servers.
-On a personal dev server, they're empty, and any task that references
-one of them aborts before it even runs, with a message like:
-
-```
-EcfFile::variableSubstitution: failed: '%ecflow_ver%'
-```
-
-Each missing variable produces an identical-looking error, so you peel
-onions. Save yourself the time and set the lot up front:
-
-```bash
-ecflow_client --alter add variable HOMEgfs        "${HOMEgfs}"      /gfs_c96
-ecflow_client --alter add variable ECF_LOGHOST    "${ECF_HOST}"     /gfs_c96
-ecflow_client --alter add variable ecflow_ver     5.6.0             /gfs_c96
-ecflow_client --alter add variable PDY            "$(date +%Y%m%d)" /gfs_c96
-ecflow_client --alter add variable PARATEST       NO                /gfs_c96
-ecflow_client --alter add variable COMPATH        ' '                /gfs_c96
-ecflow_client --alter add variable MAILTO         ' '                /gfs_c96
-ecflow_client --alter add variable DBNLOG         NO                /gfs_c96
-ecflow_client --alter add variable SENDDBN        NO                /gfs_c96
-ecflow_client --alter add variable SENDDBN_NTC    NO                /gfs_c96
-ecflow_client --alter add variable SENDCANNEDDBN  NO                /gfs_c96
-ecflow_client --alter add variable rrfs_ver       ' '                /gfs_c96
-```
-
-> **Note — empty strings must be `''`, not `""`.**  The shell eats `""`
-> before ecFlow sees it, leaving only the variable name and the path.
-> ecFlow then counts two arguments instead of the required three and throws
-> `AlterCmd: add: Not enough arguments`. Single quotes `''` pass an actual
-> empty-string token to the process and work correctly.
-
-#### Critical: tell ecFlow to submit through PBS, not run inline
-
-On a freshly-started server, `ECF_JOB_CMD` defaults to running the rendered
-job *directly* in the foreground (`%ECF_JOB% 1> %ECF_JOBOUT% 2>&1`). On a
-WCOSS2 login node that means your jobs run **on the login node itself**,
-which is forbidden — the system reaper kills them after ~5 minutes (the
-task aborts with `exit status 124`) and you'll get a polite-but-firm
-warning from admins.
-
-Override the three job-handling commands so ecFlow submits to PBS and
-talks to PBS for kill / status:
-
-```bash
-ecflow_client --alter add variable ECF_JOB_CMD    "qsub %ECF_JOB% 1> %ECF_JOBOUT% 2>&1" /gfs_c96
-ecflow_client --alter add variable ECF_KILL_CMD   "qdel %ECF_RID%"                      /gfs_c96
-ecflow_client --alter add variable ECF_STATUS_CMD "qstat %ECF_RID% > %ECF_JOB%.stat 2>&1" /gfs_c96
-```
-
-Confirm by `--alter`-ing then watching `qstat -u $USER` after `--begin`:
-real PBS jobs should appear, with `S=R` (running) on a compute node, not
-as a process under your login-node UID.
-
-#### Critical: use a *dev-local* `head.h` and `tail.h`
-
-The shared `ecf/include/head.h` and `tail.h` in this repo are written
-for production. Inside `head.h` they call `module load prod_envir`,
-which on WCOSS2 silently re-points `ECF_HOST` and `ECF_PORT` at NCO's
-operational ecflow servers via `/lfs/h1/ops/prod/config/dhostfile`.
-
-Symptom: jobs reach the compute node, run cleanly, then `ecflow_client
---init` (called from `head.h`) tries to talk to `cdecflow01:34637`
-and friends, walks the entire prod-server list, times out (`status 124`),
-and from ecFlow's perspective the task stays `submitted` forever even
-though PBS finished it.
-
-Fix: keep a dev-local copy of the includes that re-pin `ECF_HOST` /
-`ECF_PORT` after the module loads, and point `ECF_INCLUDE` at that
-directory instead of the shared one.  In the C96 suite this lives at
-`dev/ecf/c96/include/`. The relevant patch in both `head.h` and `tail.h`
-is just a few lines, applied right before the `ecflow_client --init` /
-`--complete` call:
-
-```bash
-# C96 dev override: prod_envir loader silently overrides ECF_HOST/ECF_PORT
-# via /lfs/h1/ops/prod/config/dhostfile.  Re-pin them before the call.
-unset ECF_HOSTFILE
-export ECF_HOST=%ECF_LOGHOST%
-export ECF_PORT=%ECF_PORT%
-```
-
-If you see the abort log filling with `trying next host(cdecflow01:34637)
-... ddecflow02:34637 ...`, this is the issue. The suite-level
-`unset ECF_HOSTFILE` you ran in the *driver* shell does not propagate
-to the PBS job; the job is a fresh shell on a compute node.
-
-#### A subtle one: `ECF_FILES` and `ECF_INCLUDE` should be absolute
-
-The suite header sets these to `%HOMEgfs%/...`. In theory ecFlow expands
-`%HOMEgfs%` at job-render time and you get a real path. In practice, on a
-WCOSS2 5.6.0 server, the substitution sometimes misfires — perhaps because
-the server reads these *before* the suite-level `HOMEgfs` is added. The
-symptom is an error like:
-
-```
-Directory ECF_FILES(%HOMEgfs%/dev/ecf/c96/scripts) does not exist
-```
-
-If you see that, pin them to absolute paths:
-
-```bash
-ecflow_client --alter change variable ECF_INCLUDE "${HOMEgfs}/dev/ecf/c96/include" /gfs_c96/primary
-ecflow_client --alter change variable ECF_FILES   "${HOMEgfs}/dev/ecf/c96/scripts" /gfs_c96/primary
-```
-
-The `change` (vs `add`) matters: the variable already exists at this scope,
-you're rewriting it. `add` would error.
-
-Confirm the result with `--query`:
-
-```bash
-ecflow_client --query variable /gfs_c96/primary:ECF_INCLUDE
-```
-
-If the printed value still starts with a `/` followed by `dev/ecf/...`
-(e.g. `/dev/ecf/c96/include`), the substitution leaked: `%HOMEgfs%`
-was empty when ecFlow expanded the variable. That's still wrong even
-though it looks structurally correct -- the suite will fail to find
-the include files. Re-run the `change` command with the absolute
-path explicit.
-
-> **Rocoto equivalent:** all variables are set in the XML itself
-> (`<envar>`, `<cycledef>`, etc.) and re-read on every `rocotorun`.
-> There's no in-memory mutation step; you `vi workflow.xml`, save,
-> and the next run picks it up. No `--alter`, no re-applying overrides
-> after a reload.
-
-### Step 4 — Begin only the first cycle
-
-If the suite has multiple cycles (here, 12Z cold-start then 00Z), only let
-the first one run while you're watching. Keep the rest suspended.
-
-```bash
-ecflow_client --suspend=/gfs_c96/primary/00
-ecflow_client --resume=/gfs_c96
-ecflow_client --resume=/gfs_c96/primary/12
-ecflow_client --begin=gfs_c96
-```
-
-`--begin` flips the suite from "loaded" to "running." With 00Z still
-suspended, only 12Z's tasks actually go anywhere.
-
-> **Rocoto equivalent:** define your `<cycledef>` to cover only the
-> cycle(s) you want to run, then start `rocotorun` (or wait for the
-> cron). To freeze a future cycle without removing it, comment out
-> the relevant `<cycledef>` block, or restrict its date range.
-> There's no "resume/begin" toggle; presence in the XML is the
-> entire signal.
-
-### Step 5 — Watch state
-
-```bash
-ecflow_client --get_state /gfs_c96/primary/12 \
-  | grep -oE "state:[a-z]+" | sort | uniq -c
-```
-
-Healthy progression looks like this, run repeatedly over time:
-
-```
-            794 state:queued
-   1 state:active   793 state:queued
-   3 state:active   1 state:complete   791 state:queued
-   ...
-   794 state:complete
-```
-
-For PBS-side visibility:
-
-```bash
-qstat -u "${USER}"
-```
-
-Other useful server-status commands (work against whichever host:port
-you're pointed at):
-
-```bash
-ecflow_client --stats        # one-liner: is the server HALTED or RUNNING?
-ecflow_client --restart      # if it reports HALTED, this brings it back
-```
-
-> **Rocoto equivalent:** `rocotostat -d <db> -w <xml>` prints a
-> compact table of task states per cycle. Add `-c <cycle>` to scope
-> to one cycle, `-t <task>` to scope to one task. The same
-> `qstat -u` works on the scheduler side regardless of workflow
-> manager.
-
-### Step 6 — Diagnose aborts
-
-```bash
-ecflow_client --get_state /gfs_c96/primary/12 \
-  | grep -E "task .* state:aborted" | head -3
-```
-
-Each line carries the abort reason after `abort<:`. The common patterns:
-
-| Error contains                                       | Cause                                        | Fix                                            |
-|------------------------------------------------------|----------------------------------------------|------------------------------------------------|
-| `Directory ECF_FILES(%HOMEgfs%/...) does not exist`  | Variable substitution didn't expand          | Pin `ECF_FILES` absolute (Step 3 last block)   |
-| `Could not open include file: .../head.h`            | Same, but for `ECF_INCLUDE`                  | Pin `ECF_INCLUDE` absolute                     |
-| `EcfFile::variableSubstitution: failed: '%X%'`       | Variable `X` not set anywhere on suite       | `--alter add variable X <value> /gfs_c96`      |
-| Task ran, then aborted partway                       | Real runtime failure (missing data, etc.)    | Read `${ECF_HOME}/<task path>.1`               |
-| `exited with status 124` after ~5 min                 | Job ran inline on the login node and was reaped | Set `ECF_JOB_CMD="qsub ..."` (Step 3 sub-block) |
-| `trying next host(cdecflow01:34637) ...`              | `prod_envir` overrode `ECF_HOST`/`ECF_PORT` to ops servers via dhostfile | Use a dev-local `head.h`/`tail.h` that re-pins them; `ECF_INCLUDE` -> `dev/ecf/c96/include` |
-
-After fixing a structural cause, requeue:
-
-```bash
-ecflow_client --requeue=force /gfs_c96
-```
-
-Requeue resets the affected tasks back to "queued." The server then
-re-evaluates triggers and re-submits whatever's eligible.
-
-> **Rocoto equivalent:** to retry a task you reset its state and
-> tell Rocoto to submit it again, in two steps:
->
-> ```bash
-> rocotorewind -d gfs.db -w workflow.xml -t MyTask -c 202606040000
-> rocotoboot   -d gfs.db -w workflow.xml -t MyTask -c 202606040000
-> ```
->
-> `rocotorewind` clears the previous attempt from the database;
-> `rocotoboot` forces a fresh submission. The next `rocotorun`
-> picks up dependents.
-
-### Reloading after a def or include change
-
-Editing the `.def` file or the include scripts on disk does **not**
-automatically update the running server. The server is operating off
-an in-memory copy of whatever `--load` last sent it. So after a `git
-pull` (or any local edit you want the server to see) you have to
-reload, *and re-add every `--alter` variable*, because deleting the
-suite drops them with it:
-
-```bash
-# 1. Replace the in-memory suite — two equivalent ways:
-
-# Option A: delete then load (always works, even for a first load)
-ecflow_client --delete=force=yes /gfs_c96
-ecflow_client --load dev/ecf/c96/defs/gfs_c96.def
-ecflow_client --suspend=/gfs_c96
-
-# Option B: --replace (loads if not present, replaces if it is — one step)
-ecflow_client --replace=/gfs_c96 dev/ecf/c96/defs/gfs_c96.def
-ecflow_client --suspend=/gfs_c96
-
-# 2. Re-add the suite-level vars from Step 3 (every one of them)
-#    -- including ECF_JOB_CMD/ECF_KILL_CMD/ECF_STATUS_CMD
-
-# 3. Re-pin ECF_INCLUDE and ECF_FILES absolute (Step 3 last block)
-
-# 4. Resume + begin the cycles you want to run
-```
-
-It's easy to forget step 2.  The symptom is exactly the same set of
-`failed: '%X%'` aborts you saw on first load.  When in doubt, save
-the whole sequence as a small reload script and run it after every
-`--delete`.
-
-If you only edited an `.ecf` script, you don't need to reload: the
-next time the server renders that task (next submit, or a `--requeue`)
-it re-reads the file from disk.
-
-> **Rocoto equivalent:** edit `workflow.xml` and save. The next
-> `rocotorun` parses the new XML and reconciles it against the
-> SQLite database. Variable changes, dependency edits, new tasks --
-> all picked up automatically. There's no "reload" command; the
-> file *is* the source of truth, every cycle.
-
-### Step 7 — Release the next cycle
-
-When 12Z is fully green:
-
-```bash
-ecflow_client --get_state /gfs_c96/primary/12 \
-  | grep -oE "state:[a-z]+" | sort | uniq -c
-# expect:  N state:complete
-ecflow_client --resume=/gfs_c96/primary/00
-```
-
-If your suite has a `cycle_end` task that handles the handoff, that's what
-will fire 00Z. Watch the same way.
-
-> **Rocoto equivalent:** Rocoto handles cycle progression automatically
-> from the `<cycledef>` ranges -- once a cycle's tasks are eligible
-> per its date and the cron schedule, `rocotorun` picks them up.
-> There's no manual "resume" step.
-
-### Step 8 — Clean up
-
-```bash
-ecflow_client --delete=force=yes /gfs_c96
-```
-
-That removes the suite from the server's memory; the `.def` and `.ecf`
-files on disk are untouched.
-
-To kill the server entirely (only when you're done for the day or week),
-you have two equivalent options:
-
-```bash
-ecflow_client --terminate=yes       # graceful shutdown via client
-ecflow_stop.sh -p 2137              # same thing via the convenience script
-```
-
-Both stop the server on the port you specify. `ecflow_stop.sh` is what
-the official docs show; `--terminate=yes` is the raw client equivalent.
-
-> **Rocoto equivalent:** there's nothing to clean up at the engine
-> level. To stop a workflow, comment out its line in your crontab
-> (so `rocotorun` stops being invoked) and optionally `rm` the
-> SQLite database to forget state. To remove a single task across
-> all cycles you delete it from the XML; the next `rocotorun`
-> reconciles. No daemon to terminate.
-
----
-
-## 5. Why each thing matters
-
-| Ingredient                     | Without it                                                    | With it                                              |
-|--------------------------------|---------------------------------------------------------------|------------------------------------------------------|
-| `ecflow_server`                | Nothing remembers state; clients can't connect.               | Persistent in-memory state, port to talk to it.      |
-| `ECF_HOST` + `ECF_PORT`        | Client uses fallback hostfile, hits production by accident.   | Client reaches your server.                          |
-| `ECF_HOME`                     | Server has nowhere to write checkpoints or rendered jobs.     | Crash-resistant; renders jobs you can inspect.       |
-| `ECF_FILES`                    | Server can't find the `.ecf` script for any task.             | Tasks render and submit.                             |
-| `ECF_INCLUDE`                  | `%include <head.h>` can't be resolved.                        | Standard headers/footers work.                       |
-| Suite-level vars in Step 3     | Every task aborts with `failed: '%X%'`.                       | Substitution succeeds, jobs reach PBS.               |
-| `--suspend` before `--begin`   | Suite starts running while you're still configuring.          | You stay in control until you say "go."              |
-| Staying on the same login node | Mid-session host change orphans the server reference.         | Client and server agree on `localhost`.              |
-
----
-
-## 6. Common pitfalls
-
-- **"Connection refused on port 34637."** That number is not yours. It
-  comes from the production `ECF_HOSTFILE` your env didn't override.
-  Fix: `unset ECF_HOSTFILE` and set `ECF_HOST` + `ECF_PORT` explicitly.
-- **"My suite loads, then everything goes red instantly."** Variable
-  substitution is failing. Look for `EcfFile::variableSubstitution: failed`
-  in the abort reason and add the missing variable on the suite.
-- **"Files on disk look right but ecflow says the directory doesn't
-  exist."** `ECF_FILES` literally contains `%HOMEgfs%/...` because the
-  substitution didn't run. Pin to an absolute path with `--alter change`.
-- **"I edited the def but the server still has the old one."** Loading
-  doesn't re-read the file. You have to `--delete` and `--load` again.
-  Variable overrides set by `--alter` get wiped along with the suite, so
-  re-apply them.
-- **"I `ssh`'d to a different login node and now nothing works."** Your
-  server lives on the original node. Either `ssh` back, or set `ECF_HOST`
-  to that original node so the new shell aims correctly.
-- **"My job aborted with `exited with status 124` after a few minutes."**
-  ecFlow ran the job *on the login node* instead of submitting it to PBS,
-  and the system reaped it. Override `ECF_JOB_CMD`, `ECF_KILL_CMD`, and
-  `ECF_STATUS_CMD` per Step 3 so jobs go through `qsub`. (Running real
-  jobs on a login node will also earn you an admin warning.)
-- **"PBS finished my job but ecFlow says it's still `submitted`."** The
-  job's `--init` callback never reached your dev server. Look at the PBS
-  `.o<jobid>` file for `trying next host(cdecflow01:34637)`-style lines.
-  Cause: `prod_envir` re-aimed the client at the ops servers. Fix: use a
-  dev-local `head.h`/`tail.h` that re-exports `ECF_HOST=%ECF_LOGHOST%` and
-  `ECF_PORT=%ECF_PORT%` after the module loads.
-- **"`ECF_INCLUDE` looks like `/dev/ecf/c96/include`."** That's a
-  half-substituted path: `%HOMEgfs%` expanded to empty.  The suite will
-  not find `head.h`. Fix it with `--alter change variable ECF_INCLUDE
-  /full/absolute/path /gfs_c96/primary`.
-- **"qsub fails with `Error: Please include a valid walltime`."** That
-  particular `.ecf` script is missing `#PBS -l walltime=...` (and probably
-  the rest of the PBS preamble). Every `.ecf` that goes to `qsub` needs the
-  full PBS header at the top, including `select`, `walltime`, `queue`, and
-  account. Compare against a working script in the same suite if unsure.
-- **"`ecflow_ui` won't open: Qt platform plugin xcb failed."** X11
-  forwarding isn't set up on your terminal. On WCOSS2, load the `xming`
-  module before launching the GUI:
-
-  ```bash
-  module load xming
-  ecflow_ui &
-  ```
-
-  If that still fails, make sure your SSH client (SecureCRT, MobaXterm,
-  etc.) has X11 forwarding enabled in its session settings. If you don't
-  need the GUI, skip it — every check in this chapter works from the CLI.
-  (You cannot install anything on WCOSS2; `xming` is already there as a
-  module.)
-
----
-
-## 7. The same workflow in Rocoto, briefly
-
-For contrast, here's how the same loop looks on Hera with Rocoto:
-
-```bash
-# Generate / edit workflow.xml
-vi workflow.xml
-
-# Crontab runs this every 5 min, but you can also run it manually:
-rocotorun -d gfs.db -w workflow.xml
-
-# Check status
-rocotostat -d gfs.db -w workflow.xml
-
-# A task aborted; reset and retry it
-rocotorewind -d gfs.db -w workflow.xml -t MyTask -c 202606040000
-rocotoboot   -d gfs.db -w workflow.xml -t MyTask -c 202606040000
-```
-
-No daemon. No port. State is in `gfs.db`, a SQLite file. There is no
-"loaded into a server" step — Rocoto re-derives state every time it runs.
-You can `vi workflow.xml`, save, and the next `rocotorun` picks it up.
-
-It's hard to overstate how much lighter that loop is. The price is: no
-real-time GUI, no push notifications when a task finishes, and no shared
-view across multiple operators. Tradeoffs.
-
----
-
-## 8. Mental model to lock in
-
-- **The server is the workflow.** Without it running, ecFlow does nothing.
-  Rocoto has no equivalent — its "server" is cron.
-- **Clients talk to the server over a port.** Get the host:port wrong and
-  you connect to nothing or, worse, the wrong server.
-- **State lives in RAM.** A `--load` puts the suite into the server's
-  memory; `--alter` mutates that memory; `--delete` evicts it. The `.def`
-  file on disk is just the seed.
-- **Triggers are about state, not files.** They reference other tasks'
-  ecFlow state, not files in the COM area.
-- **`%VARIABLE%` is the templating glue.** Most "everything aborted at
-  once" failures come down to one missing variable.
-- **Suspend before you begin.** Keep the safety belt on while you finish
-  setting things up.
-- **The job lives on a compute node, not your login shell.** Anything
-  it depends on (env vars, paths, hostnames) must be set inside the
-  `.ecf` script or its includes -- the driver shell's exports do not
-  travel with it.
-- **`.ecf` script + variable expansion = the actual PBS job.** Read the
-  rendered `.job0` file under `${ECF_HOME}` to see exactly what was
-  submitted.
-
-> **One-line shorthand:** *Rocoto is cron + a database. ecFlow is a
-> database server + a GUI.*
-
-Once that lands, every command in this chapter is just "ask the running
-database server something" or "tell the running database server to change
-state." The rest is plumbing.
+**Rocoto** is cron + a database. The engine runs for a few seconds every five
+minutes. State lives in a SQLite file. No daemon, no port.
+
+**ecFlow** is a database server + a GUI. A long-running daemon holds state in
+RAM. Clients connect to it on demand. Push-notification updates, sub-second
+GUI responses.
+
+## 3.2 Concept mapping
+
+| Concept | Rocoto | ecFlow |
+|---|---|---|
+| Whole workflow | XML file | suite (.def file) |
+| Group of tasks | metatask | family |
+| One job | task | task |
+| Job script | `<command>` in XML | `.ecf` file under `ECF_FILES` |
+| Time-stepped runs | `<cycledef>` (date range + stride) | repeat clauses, or one family per cycle |
+| Dependency | `<taskdep .../>` | `trigger ../task == complete` |
+| Variable in script | `<envar>` + shell `${VAR}` | `edit VAR 'value'` + `%VAR%` in `.ecf` |
+| State storage | SQLite file (`gfs.db`) | server in-memory + checkpoint files |
+| Engine startup | add to crontab (one line) | `ecflow_start.sh` (persistent daemon) |
+| Status check | `rocotostat` | `ecflow_client --get_state` or `ecflow_ui` |
+| Retry a task | `rocotorewind` + `rocotoboot` | `ecflow_client --requeue=force` |
+| Freeze a task | not directly; remove from XML | `ecflow_client --suspend=/path/task` |
+| Resume frozen | re-add to XML | `ecflow_client --resume=/path/task` |
+| Config change at runtime | edit XML → `rocotorun` picks it up | `ecflow_client --alter change variable` |
+| Reload workflow definition | automatic on next `rocotorun` | `--delete` + `--load` + re-apply `--alter` vars |
+| Logs | `ROTDIR/logs/YYYYMMDDHH/<task>.log` | PBS `.o<jobid>` in submit dir; per-try `.1`, `.2`, ... in `ECF_HOME` |
+
+## 3.3 Step-by-step comparison
+
+### Setting up
+
+| Step | Rocoto | ecFlow |
+|---|---|---|
+| Create experiment | `create_experiment.py -y case.yaml` | Load `.def` file into running server |
+| Config files | `EXPDIR/<PSLOT>/config.*` (one per job category) | `edit VAR 'value'` in `.def` + `--alter` overrides |
+| No equivalent | — | Start `ecflow_server` |
+
+### Starting
+
+| Step | Rocoto | ecFlow |
+|---|---|---|
+| Activate | Add crontab line | `ecflow_client --begin=<suite>` |
+| Pause everything | Comment out crontab | `ecflow_client --suspend=/<suite>` |
+| Resume | Uncomment crontab | `ecflow_client --resume=/<suite>` |
+
+### Watching
+
+| Step | Rocoto | ecFlow |
+|---|---|---|
+| Overall status | `rocotostat -d gfs.db -w gfs.xml` | `ecflow_client --get_state /<suite>` |
+| One cycle | `rocotostat ... -c 202606040000` | `ecflow_client --get_state /<suite>/primary/12` |
+| One task | `rocotostat ... -t taskname` | right-click in `ecflow_ui`, or `--get_state /path/task` |
+| PBS jobs | `qstat -u $USER` | `qstat -u $USER` (same) |
+
+### Fixing failures
+
+| Scenario | Rocoto | ecFlow |
+|---|---|---|
+| Single task failed | `rocotorewind -t task -c cycle` then `rocotoboot` | `ecflow_client --requeue=force /path/task` |
+| All tasks failed | re-run `rocotorun` with cron | `ecflow_client --requeue=force /<suite>` |
+| Changed a J-script | nothing (read at next submit) | nothing (read at next submit) |
+| Changed the XML/def | nothing (read on next `rocotorun`) | `--delete` + `--load` + re-apply `--alter` vars |
+| Changed an `.ecf` script | N/A (scripts embedded in XML) | nothing (read at next submit) |
+
+## 3.4 The things that don't exist on the other side
+
+**Rocoto only:**
+- `cycledef` groups (named cycle ranges with a stride; each task picks which groups it belongs to)
+- `maxtries` / `cyclethrottle` / `taskthrottle` at the XML level
+- SQLite database that you can inspect or back up
+
+**ecFlow only:**
+- `ecflow_server` daemon (nothing analogous in Rocoto)
+- `ecflow_ui` GUI with colored tree
+- `%VAR%` substitution inside job scripts (Rocoto passes vars as `<envar>`)
+- Events (sub-states inside a task, e.g. "forecast reached f024" — downstream products can trigger off events)
+- `suspend` / `resume` on individual families/tasks while the suite is running
+- Port-based remote access from any machine that can reach the server node
+
+## 3.5 Mental models side by side
+
+> **Rocoto:** `rocotorun` is a visitor that comes every 5 minutes, reads the
+> XML, checks the database, submits what's ready, and leaves. The state is
+> always on disk and always readable even if the cron is stopped.
+
+> **ecFlow:** `ecflow_server` is a resident that never leaves. It holds all
+> state in RAM. Clients are visitors that stop by to ask questions or give
+> orders, then leave.
+
+The practical consequence:
+
+- Rocoto: stop the cron → everything freezes safely. Nothing runs, nothing
+  crashes. Resume by un-commenting the cron line.
+- ecFlow: stop the server → all running jobs continue (they're in PBS already)
+  but their `--complete` callbacks will fail (server is gone). Restart the
+  server quickly to recover. The checkpoint files let it resume from where it
+  was.
