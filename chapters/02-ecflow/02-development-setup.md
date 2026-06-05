@@ -46,6 +46,8 @@ rocotostat -d EXPDIR/myexpt/myexpt.db -w EXPDIR/myexpt/myexpt.xml
 
 There is no `setup_expt.py` equivalent for ecFlow dev. Instead:
 
+Key files referenced below: [`build_def.py`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/build_def.py) — [`gfs_c96.def`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/defs/gfs_c96.def) — [`bootstrap.sh`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/bootstrap.sh) — [`downscale_resources.py`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/downscale_resources.py) — [`cycle_end.ecf`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/scripts/cycle_end.ecf)
+
 ```bash
 # Step 1: clone and checkout
 cd /lfs/h2/emc/global/noscrub/${USER}
@@ -56,7 +58,7 @@ cd global-workflow_gfsv17
 export HOMEgfs=$PWD
 
 # Step 2: make sure the suite def is up to date
-python3 dev/ecf/c96/build_def.py
+python3 dev/ecf/c96/build_def.py  # source: https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/build_def.py
 
 # Step 3: start your ecFlow server (once; see Chapter 2.1)
 source ~/ecflow_c96.env
@@ -64,9 +66,9 @@ ecflow_start.sh -p "${ECF_PORT}" -d "${ECF_HOME}"
 ecflow_client --ping
 
 # Step 4: load the suite and bootstrap directories + variables
-ecflow_client --load=[dev/ecf/c96/defs/gfs_c96.def](https://github.com/AntonMFernando-NOAA/global-workflow/blob/d17125ed3661468a5c4ff92bcb140173d3743b3d/dev/ecf/c96/build_def.py)
+ecflow_client --load=dev/ecf/c96/defs/gfs_c96.def
 ecflow_client --suspend=/gfs_c96
-bash [dev/ecf/c96/bootstrap.sh](https://github.com/AntonMFernando-NOAA/global-workflow/blob/d17125ed3661468a5c4ff92bcb140173d3743b3d/dev/ecf/c96/bootstrap.sh)
+bash dev/ecf/c96/bootstrap.sh
 
 # Step 5: begin (12Z first)
 ecflow_client --suspend=/gfs_c96/primary/00
@@ -151,7 +153,7 @@ There is no `setup_expt.py` for ecFlow. The equivalent is:
 
 | Rocoto | ecFlow dev equivalent |
 |---|---|
-| `setup_expt.py` | `build_def.py` (generates the `.def` from the production def) |
+| `setup_expt.py` | [`build_def.py`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/build_def.py) (generates the `.def` from the production def) |
 | `config.base` (EXPDIR, paths, dates) | Suite-level `edit` variables in the `.def` + `--alter` overrides |
 | `config.com` (COM path templates) | `compath.py` in ops; your `COMROOT` variable in dev |
 | `setup_workflow.py` | — (the `.def` is already the workflow definition) |
@@ -160,7 +162,7 @@ There is no `setup_expt.py` for ecFlow. The equivalent is:
 
 The key gap: Rocoto config files let you tune each job individually (walltime,
 MPI ranks, queue, etc.) for a specific experiment. In ecFlow, those are inside
-the `.ecf` scripts themselves. For the C96 dev suite, `downscale_resources.py`
+the `.ecf` scripts themselves. For the C96 dev suite, [`downscale_resources.py`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/downscale_resources.py)
 plays the role that the config-override mechanism plays for Rocoto.
 
 ## 2.4 ROTDIR vs COMROOT
@@ -221,6 +223,8 @@ pattern, regardless of which workflow engine ran them.
 
 ### ecFlow dev
 
+Scripts: [`build_def.py`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/build_def.py) — [`bootstrap.sh`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/bootstrap.sh)
+
 ```bash
 # 1. Edit the science code (J-scripts, ex-scripts, .ecf scripts, etc.)
 # 2. If you changed .ecf scripts only: nothing — re-read at next submit
@@ -245,7 +249,7 @@ changes using a Rocoto-like dev workflow:
 - **Code lives in the repo** (like Rocoto), not in an installed production package
 - **Resources are downsized** to C96 so it runs in minutes on the dev queue (like the C96 Rocoto CI cases)
 - **Two cycles only** (12Z + 00Z) instead of a continuous round-robin
-- **bootstrap.sh** fills the role of `setup_expt.py`: creates dirs, sets variables, gets you to the point where `--begin` works
+- [**`bootstrap.sh`**](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/bootstrap.sh) fills the role of `setup_expt.py`: creates dirs, sets variables, gets you to the point where `--begin` works
 
 The gap compared to Rocoto: there's no per-experiment isolation. If you want
 to compare two versions of the suite you need two separate server ports or
@@ -262,14 +266,14 @@ two separate suite names.
 | Code root | `HOMEglobal` = repo checkout | `HOMEgfs` = repo checkout |
 | Experiment slot name | `PSLOT` | No equivalent (suite name is the slot) |
 | Experiment config dir | `EXPDIR/<PSLOT>/` | No separate dir; suite `edit` variables in `.def` |
-| Setup script | `create_experiment.py` / `setup_expt.py` | `bootstrap.sh` (partial equivalent) |
-| Workflow definition | `<PSLOT>.xml` (generated by `setup_workflow.py`) | `gfs_c96.def` (generated by `build_def.py`) |
+| Setup script | `create_experiment.py` / `setup_expt.py` | [`bootstrap.sh`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/bootstrap.sh) (partial equivalent) |
+| Workflow definition | `<PSLOT>.xml` (generated by `setup_workflow.py`) | [`gfs_c96.def`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/defs/gfs_c96.def) (generated by [`build_def.py`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/build_def.py)) |
 | COM / model output root | `ROTDIR` = `COMROOT/<PSLOT>` | `COMROOT` set in `bootstrap.sh` |
 | Per-cycle COM subdir | `ROTDIR/<RUN>.YYYYMMDD/HH/` | `COMROOT/<RUN>.YYYYMMDD/HH/` (same) |
 | Job working dir | `${STMP}/RUNDIRS/<PSLOT>/<RUN>.YYYYMMDDHH/` | `${DATAROOT}/.../<RUN>.YYYYMMDDHH/` |
 | Engine startup | Add crontab line | `ecflow_start.sh` + `--begin` |
 | Config change | Edit `config.*` in EXPDIR, re-run `setup_workflow.py` | `ecflow_client --alter change variable` or reload def |
-| Resource tuning | `config.resources.*` per experiment | Hardcoded in `.ecf` scripts; `downscale_resources.py` |
+| Resource tuning | `config.resources.*` per experiment | Hardcoded in `.ecf` scripts; [`downscale_resources.py`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/downscale_resources.py) |
 | Task script | J-script path in `<command>` in XML | `.ecf` file under `ECF_FILES` |
 | Variable injection into job | Rocoto `<envar>` → shell `${VAR}` | ecFlow `edit VAR 'value'` → `%VAR%` in `.ecf` |
 | Status check | `rocotostat` | `ecflow_client --get_state` or `ecflow_ui` |
@@ -297,7 +301,7 @@ are much faster. But the initial friction is real.
 Because the thing you're testing is the ecFlow-specific logic:
 
 - Do the triggers between tasks fire in the right order?
-- Does the cycle handoff in `cycle_end.ecf` work correctly?
+- Does the cycle handoff in [`cycle_end.ecf`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/scripts/cycle_end.ecf) work correctly?
 - Does a new task you added sit in the right place in the dependency tree?
 - Do events (sub-task signals like "forecast reached f024") release
   downstream tasks at the right time?

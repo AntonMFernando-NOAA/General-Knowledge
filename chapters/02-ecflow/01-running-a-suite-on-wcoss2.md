@@ -208,6 +208,8 @@ ecflow_client --host=dlogin01 --port=2137 --terminate=yes
 This section explains what each command in Section 1 is doing and why it
 has to be done that way.
 
+Key files referenced in this chapter: [`gfs_c96.def`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/defs/gfs_c96.def) — [`bootstrap.sh`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/bootstrap.sh) — [`head.h`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/include/head.h) — [`tail.h`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/include/tail.h) — [`cycle_end.ecf`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/scripts/cycle_end.ecf)
+
 ## 2.1 Why there's a server at all
 
 ecFlow keeps your workflow's state (which tasks are queued, running, done,
@@ -376,7 +378,7 @@ the `--init` callback never reached your server. Almost always this is the
 | `failed: '%VAR%'` on load | Variable not set on suite | Add it with `--alter add variable` |
 | `Directory ECF_FILES(%HOMEgfs%/...) does not exist` | Substitution failed before `HOMEgfs` was added | Pin absolute paths with `--alter change` |
 | `submitted` but never `active`, PBS shows no job | `ECF_JOB_CMD` not set; ran inline on login node | Add `ECF_JOB_CMD qsub ...` |
-| `submitted` but never `active`, PBS job did run | `prod_envir` clobbered `ECF_HOST`/`ECF_PORT` | Use dev-local `head.h`/`tail.h` with re-pin |
+| `submitted` but never `active`, PBS job did run | `prod_envir` clobbered `ECF_HOST`/`ECF_PORT` | Use dev-local [`head.h`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/include/head.h)/[`tail.h`](https://github.com/AntonMFernando-NOAA/global-workflow/blob/feature/gfsv17-ecflow/dev/ecf/c96/include/tail.h) with re-pin |
 | `exited with status 124` | 5-min inline run timeout on login node | Same: set `ECF_JOB_CMD` |
 | `qsub: Error: Please include a valid walltime` | `.ecf` script missing PBS header | Every `.ecf` needs `#PBS -l walltime=...` etc. |
 | Task `active` but PBS shows nothing, stuck forever | Job finished but `--complete` didn't reach server | Same dhostfile issue in `tail.h`; re-pin host/port |
