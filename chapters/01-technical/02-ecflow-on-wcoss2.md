@@ -156,13 +156,21 @@ labeled with what could plausibly go wrong and how to fix it.
 ```bash
 cat > ~/ecflow_c96.env <<'EOF'
 unset ECF_HOSTFILE
-module load ecflow
-export ECF_HOST=dlogin01
-export ECF_PORT=2137
+module load ecflow          # also auto-sets ECF_PORT to the system default
+export ECF_HOST=dlogin01   # override: your personal dev server lives here
+export ECF_PORT=2137        # override: your personal dev server port
 export ECF_HOME=/lfs/h2/emc/global/noscrub/${USER}/ecflow_c96
 export HOMEgfs=/lfs/h2/emc/global/noscrub/${USER}/global-workflow_gfsv17
 EOF
 ```
+
+> **Note — shared ops server vs personal dev server.** The official WCOSS2
+> guidance points `ECF_HOST` at `cdecflow01` — a dedicated ecflow server
+> maintained by NCO that the ops suite runs against. When you do that,
+> there's no `ecflow_start.sh` step because the server is already running.
+> This chapter uses `dlogin01` because you're running a **personal dev
+> server** on your own port (2137) that you started yourself. The commands
+> are identical; only the host and port differ.
 
 In every new SecureCRT tab, run:
 
@@ -461,6 +469,14 @@ For PBS-side visibility:
 qstat -u "${USER}"
 ```
 
+Other useful server-status commands (work against whichever host:port
+you're pointed at):
+
+```bash
+ecflow_client --stats        # one-liner: is the server HALTED or RUNNING?
+ecflow_client --restart      # if it reports HALTED, this brings it back
+```
+
 > **Rocoto equivalent:** `rocotostat -d <db> -w <xml>` prints a
 > compact table of task states per cycle. Add `-c <cycle>` to scope
 > to one cycle, `-t <task>` to scope to one task. The same
@@ -516,9 +532,15 @@ reload, *and re-add every `--alter` variable*, because deleting the
 suite drops them with it:
 
 ```bash
-# 1. Replace the in-memory suite
+# 1. Replace the in-memory suite — two equivalent ways:
+
+# Option A: delete then load (always works, even for a first load)
 ecflow_client --delete=force=yes /gfs_c96
-ecflow_client --load=dev/ecf/c96/defs/gfs_c96.def
+ecflow_client --load dev/ecf/c96/defs/gfs_c96.def
+ecflow_client --suspend=/gfs_c96
+
+# Option B: --replace (loads if not present, replaces if it is — one step)
+ecflow_client --replace=/gfs_c96 dev/ecf/c96/defs/gfs_c96.def
 ecflow_client --suspend=/gfs_c96
 
 # 2. Re-add the suite-level vars from Step 3 (every one of them)
@@ -572,11 +594,16 @@ ecflow_client --delete=force=yes /gfs_c96
 That removes the suite from the server's memory; the `.def` and `.ecf`
 files on disk are untouched.
 
-To kill the server entirely (only when you're done for the day or week):
+To kill the server entirely (only when you're done for the day or week),
+you have two equivalent options:
 
 ```bash
-ecflow_client --terminate=yes
+ecflow_client --terminate=yes       # graceful shutdown via client
+ecflow_stop.sh -p 2137              # same thing via the convenience script
 ```
+
+Both stop the server on the port you specify. `ecflow_stop.sh` is what
+the official docs show; `--terminate=yes` is the raw client equivalent.
 
 > **Rocoto equivalent:** there's nothing to clean up at the engine
 > level. To stop a workflow, comment out its line in your crontab
@@ -640,11 +667,20 @@ ecflow_client --terminate=yes
   the rest of the PBS preamble). Every `.ecf` that goes to `qsub` needs the
   full PBS header at the top, including `select`, `walltime`, `queue`, and
   account. Compare against a working script in the same suite if unsure.
-- **"`ecflow_ui` won't open: Qt platform plugin xcb failed."** That's an
-  X11 forwarding problem on your *terminal*, not an ecFlow problem. You
-  don't need the GUI to run a suite — every check in this chapter uses
-  `ecflow_client` from the command line. Solve the GUI later if you want
-  to monitor.
+- **"`ecflow_ui` won't open: Qt platform plugin xcb failed."** X11
+  forwarding isn't set up on your terminal. On WCOSS2, load the `xming`
+  module before launching the GUI:
+
+  ```bash
+  module load xming
+  ecflow_ui &
+  ```
+
+  If that still fails, make sure your SSH client (SecureCRT, MobaXterm,
+  etc.) has X11 forwarding enabled in its session settings. If you don't
+  need the GUI, skip it — every check in this chapter works from the CLI.
+  (You cannot install anything on WCOSS2; `xming` is already there as a
+  module.)
 
 ---
 
