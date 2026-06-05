@@ -7,12 +7,12 @@ The book grows over time. Chapters are added as topics come up in real work.
 
 ## Table of Contents
 
-### Part 1 — Technical
-- [1.1 SSH Port Forwarding and Connecting to RDHPCS (Hera)](chapters/01-technical/01-ssh-port-forwarding-rdhpcs.md)
+### Chapter 1 — SSH and Connectivity
+- [1.1 SSH Port Forwarding and Connecting to RDHPCS (Hera)](chapters/01-ssh-port-forwarding/01-ssh-port-forwarding-rdhpcs.md)
 
-- [1.2 Running an ecFlow Suite (and how it differs from Rocoto)](chapters/01-technical/02-ecflow-on-wcoss2.md)
-
-- [1.3 Setting Up an Experiment: Rocoto vs ecFlow](chapters/01-technical/03-experiment-setup-rocoto-vs-ecflow.md)
+### Chapter 2 — ecFlow
+- [2.1 Running an ecFlow Suite on WCOSS2](chapters/02-ecflow/01-running-a-suite-on-wcoss2.md)
+- [2.2 Setting Up an Experiment: Rocoto vs ecFlow](chapters/02-ecflow/02-experiment-setup.md)
 
 _(more chapters to come)_
 
