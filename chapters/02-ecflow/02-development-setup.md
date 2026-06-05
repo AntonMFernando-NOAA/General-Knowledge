@@ -64,9 +64,9 @@ ecflow_start.sh -p "${ECF_PORT}" -d "${ECF_HOME}"
 ecflow_client --ping
 
 # Step 4: load the suite and bootstrap directories + variables
-ecflow_client --load=dev/ecf/c96/defs/[gfs_c96.def](https://github.com/AntonMFernando-NOAA/global-workflow/blob/d17125ed3661468a5c4ff92bcb140173d3743b3d/dev/ecf/c96/build_def.py)
+ecflow_client --load=[dev/ecf/c96/defs/gfs_c96.def](https://github.com/AntonMFernando-NOAA/global-workflow/blob/d17125ed3661468a5c4ff92bcb140173d3743b3d/dev/ecf/c96/build_def.py)
 ecflow_client --suspend=/gfs_c96
-bash dev/ecf/c96/[bootstrap.sh](https://github.com/AntonMFernando-NOAA/global-workflow/blob/d17125ed3661468a5c4ff92bcb140173d3743b3d/dev/ecf/c96/bootstrap.sh)
+bash [dev/ecf/c96/bootstrap.sh](https://github.com/AntonMFernando-NOAA/global-workflow/blob/d17125ed3661468a5c4ff92bcb140173d3743b3d/dev/ecf/c96/bootstrap.sh)
 
 # Step 5: begin (12Z first)
 ecflow_client --suspend=/gfs_c96/primary/00
