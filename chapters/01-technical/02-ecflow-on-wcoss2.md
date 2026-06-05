@@ -16,6 +16,135 @@ finding when I first did this.
 
 ---
 
+## Quick reference — commands only
+
+The full procedure with explanations is in [Section 4](#4-the-full-procedure-on-wcoss2).
+This section is just the commands, grouped by when you run them.
+
+### One-time: create the env file
+
+```bash
+cat > ~/ecflow_c96.env <<'EOF'
+unset ECF_HOSTFILE
+module load ecflow
+export ECF_HOST=dlogin01
+export ECF_PORT=2137
+export ECF_HOME=/lfs/h2/emc/global/noscrub/${USER}/ecflow_c96
+export HOMEgfs=/lfs/h2/emc/global/noscrub/${USER}/global-workflow_gfsv17
+EOF
+```
+
+### Every new terminal
+
+```bash
+source ~/ecflow_c96.env
+```
+
+### Start the server (once; survives logout)
+
+```bash
+ssh dlogin01
+source ~/ecflow_c96.env
+mkdir -p "${ECF_HOME}"
+ecflow_start.sh -p "${ECF_PORT}" -d "${ECF_HOME}"
+ecflow_client --ping
+```
+
+On subsequent logins, just ping — no need to restart:
+
+```bash
+source ~/ecflow_c96.env
+ecflow_client --ping
+```
+
+### Load the suite
+
+```bash
+cd "${HOMEgfs}"
+ecflow_client --delete=force=yes /gfs_c96 2> /dev/null
+ecflow_client --load=dev/ecf/c96/defs/gfs_c96.def
+ecflow_client --suspend=/gfs_c96
+ecflow_client --suites
+```
+
+### Set suite variables (re-run every time you reload)
+
+```bash
+ecflow_client --alter add variable HOMEgfs        "${HOMEgfs}"      /gfs_c96
+ecflow_client --alter add variable ECF_LOGHOST    "${ECF_HOST}"     /gfs_c96
+ecflow_client --alter add variable ecflow_ver     5.6.0             /gfs_c96
+ecflow_client --alter add variable PDY            "$(date +%Y%m%d)" /gfs_c96
+ecflow_client --alter add variable PARATEST       NO                /gfs_c96
+ecflow_client --alter add variable COMPATH        ''                /gfs_c96
+ecflow_client --alter add variable MAILTO         ''                /gfs_c96
+ecflow_client --alter add variable DBNLOG         NO                /gfs_c96
+ecflow_client --alter add variable SENDDBN        NO                /gfs_c96
+ecflow_client --alter add variable SENDDBN_NTC    NO                /gfs_c96
+ecflow_client --alter add variable SENDCANNEDDBN  NO                /gfs_c96
+ecflow_client --alter add variable rrfs_ver       ''                /gfs_c96
+
+ecflow_client --alter add variable ECF_JOB_CMD    "qsub %ECF_JOB% 1> %ECF_JOBOUT% 2>&1" /gfs_c96
+ecflow_client --alter add variable ECF_KILL_CMD   "qdel %ECF_RID%"                       /gfs_c96
+ecflow_client --alter add variable ECF_STATUS_CMD "qstat %ECF_RID% > %ECF_JOB%.stat 2>&1" /gfs_c96
+
+ecflow_client --alter change variable ECF_INCLUDE "${HOMEgfs}/dev/ecf/c96/include" /gfs_c96/primary
+ecflow_client --alter change variable ECF_FILES   "${HOMEgfs}/dev/ecf/c96/scripts" /gfs_c96/primary
+
+ecflow_client --query variable /gfs_c96/primary:ECF_INCLUDE
+ecflow_client --query variable /gfs_c96/primary:ECF_FILES
+```
+
+### Begin only the 12Z cycle
+
+```bash
+ecflow_client --suspend=/gfs_c96/primary/00
+ecflow_client --resume=/gfs_c96
+ecflow_client --resume=/gfs_c96/primary/12
+ecflow_client --begin=gfs_c96
+qstat -u $USER
+```
+
+### Watch state
+
+```bash
+ecflow_client --get_state /gfs_c96/primary/12 \
+  | grep -oE "state:[a-z]+" | sort | uniq -c
+```
+
+### Diagnose failures
+
+```bash
+ecflow_client --get_state /gfs_c96/primary/12 | grep "state:aborted"
+```
+
+Requeue after fixing:
+
+```bash
+ecflow_client --requeue=force /gfs_c96
+```
+
+### Release 00Z (after 12Z is complete)
+
+```bash
+ecflow_client --get_state /gfs_c96/primary/12 \
+  | grep -oE "state:[a-z]+" | sort | uniq -c
+# expect: N state:complete
+
+ecflow_client --resume=/gfs_c96/primary/00
+```
+
+### Clean up
+
+```bash
+# Remove suite from server memory (files on disk untouched):
+ecflow_client --delete=force=yes /gfs_c96
+
+# Shut down the server entirely:
+ecflow_client --terminate=yes
+```
+
+---
+
 ## 1. The one big difference
 
 Both Rocoto and ecFlow do the same job: take a bunch of jobs, figure out
@@ -319,14 +448,20 @@ ecflow_client --alter add variable ECF_LOGHOST    "${ECF_HOST}"     /gfs_c96
 ecflow_client --alter add variable ecflow_ver     5.6.0             /gfs_c96
 ecflow_client --alter add variable PDY            "$(date +%Y%m%d)" /gfs_c96
 ecflow_client --alter add variable PARATEST       NO                /gfs_c96
-ecflow_client --alter add variable COMPATH        ""                /gfs_c96
-ecflow_client --alter add variable MAILTO         ""                /gfs_c96
+ecflow_client --alter add variable COMPATH        ''                /gfs_c96
+ecflow_client --alter add variable MAILTO         ''                /gfs_c96
 ecflow_client --alter add variable DBNLOG         NO                /gfs_c96
 ecflow_client --alter add variable SENDDBN        NO                /gfs_c96
 ecflow_client --alter add variable SENDDBN_NTC    NO                /gfs_c96
 ecflow_client --alter add variable SENDCANNEDDBN  NO                /gfs_c96
-ecflow_client --alter add variable rrfs_ver       ""                /gfs_c96
+ecflow_client --alter add variable rrfs_ver       ''                /gfs_c96
 ```
+
+> **Note — empty strings must be `''`, not `""`.**  The shell eats `""`
+> before ecFlow sees it, leaving only the variable name and the path.
+> ecFlow then counts two arguments instead of the required three and throws
+> `AlterCmd: add: Not enough arguments`. Single quotes `''` pass an actual
+> empty-string token to the process and work correctly.
 
 #### Critical: tell ecFlow to submit through PBS, not run inline
 
