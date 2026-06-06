@@ -104,13 +104,13 @@ ecflow_client --host=dlogin01 --port=2137 --alter add variable ECF_LOGHOST    "$
 ecflow_client --host=dlogin01 --port=2137 --alter add variable ecflow_ver     5.6.0             /gfs_c96
 ecflow_client --host=dlogin01 --port=2137 --alter add variable PDY            "$(date +%Y%m%d)" /gfs_c96
 ecflow_client --host=dlogin01 --port=2137 --alter add variable PARATEST       NO                /gfs_c96
-ecflow_client --host=dlogin01 --port=2137 --alter add variable COMPATH        ""                /gfs_c96
-ecflow_client --host=dlogin01 --port=2137 --alter add variable MAILTO         ""                /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable COMPATH        " "                /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable MAILTO         " "                /gfs_c96
 ecflow_client --host=dlogin01 --port=2137 --alter add variable DBNLOG         NO                /gfs_c96
 ecflow_client --host=dlogin01 --port=2137 --alter add variable SENDDBN        NO                /gfs_c96
 ecflow_client --host=dlogin01 --port=2137 --alter add variable SENDDBN_NTC    NO                /gfs_c96
 ecflow_client --host=dlogin01 --port=2137 --alter add variable SENDCANNEDDBN  NO                /gfs_c96
-ecflow_client --host=dlogin01 --port=2137 --alter add variable rrfs_ver       ""                /gfs_c96
+ecflow_client --host=dlogin01 --port=2137 --alter add variable rrfs_ver       " "                /gfs_c96
 ecflow_client --host=dlogin01 --port=2137 --alter add variable DATAROOT       "/lfs/h2/emc/global/noscrub/${USER}/c96_run/tmp" /gfs_c96
 ecflow_client --host=dlogin01 --port=2137 --alter add variable COMROOT        "/lfs/h2/emc/global/noscrub/${USER}/c96_run/com" /gfs_c96
 
