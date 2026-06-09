@@ -26,13 +26,87 @@ export HOMEgfs=/lfs/h2/emc/global/noscrub/${USER}/global-workflow_gfsv17
 EOF
 ```
 
-### Install Xming on your Windows laptop (for the GUI)
+### Set up X11 forwarding (for the GUI)
 
-Download and run the installer from https://sourceforge.net/projects/xming/
-(user-space install; no admin rights needed).
-Then in SecureCRT session config → Connection → Port Forwarding → Remote/X11
-→ enable "Forward X11 packets".
-Test: `echo $DISPLAY` should print `localhost:10.0` or similar after login.
+The CLI workflow doesn't need this. Skip if you're staying on the command
+line. To run `ecflow_ui` you need three things working: an X server on
+Windows, SecureCRT forwarding X11, and `$DISPLAY` set on the login node where
+your ecFlow server lives.
+
+#### Install an X server on Windows
+
+Pick one (both are free, user-space installs — no admin rights needed):
+
+- **VcXsrv** — https://sourceforge.net/projects/vcxsrv/ (more actively maintained)
+- **Xming** — https://sourceforge.net/projects/xming/
+
+After install, open **XLaunch** (VcXsrv's launcher; Xming has an equivalent
+shortcut) and step through:
+
+1. **Display settings** → "Multiple windows", display number `0`.
+2. **Client startup** → "Start no client".
+3. **Extra settings** → check **Disable access control**.
+4. **Finish configuration** → click **Save configuration** to a `.xlaunch`
+   file you can double-click next time.
+
+A green X icon appears in the Windows system tray. The X server listens on
+display `:0` (TCP 6000).
+
+#### Configure SecureCRT
+
+In the WCOSS2 session properties:
+
+1. **Connection → Port Forwarding → Remote/X11**
+2. Check **Forward X11 packets**.
+3. Display: leave blank (defaults to `localhost:0`).
+4. **OK**, then disconnect and reconnect.
+
+(Older SecureCRT builds put this under **Connection → SSH2 → Advanced**.)
+
+#### Verify on WCOSS2
+
+```bash
+echo $DISPLAY        # expected: localhost:10.0 (or similar)
+xclock &             # smoke test — clock window pops up on Windows
+```
+
+Empty `$DISPLAY` → forwarding didn't engage; redo the SecureCRT step.
+`Can't open display` → XLaunch isn't running, or "Disable access control"
+wasn't checked.
+
+#### Pin SecureCRT to a specific login node (recommended)
+
+WCOSS2 round-robins logins to `dlogin01..04`. Your ecFlow server lives on
+whichever node you started it from. The simplest path: connect SecureCRT
+directly to that node, not the alias, so X11 forwarding lands you on the
+right host in one hop.
+
+In SecureCRT → Session Options → **Connection → Hostname**: change from the
+round-robin alias (e.g. `dlogin.ncep.noaa.gov`) to the specific node
+(`dlogin01.ncep.noaa.gov`). Save the session as "WCOSS2 dlogin01". Add a
+sibling session per node you care about.
+
+#### If you can't pin and end up doing a second hop
+
+When SecureCRT lands you on dlogin04 and you `ssh dlogin01` to where the
+server is, X11 doesn't carry through that second hop unless you forward it
+explicitly:
+
+```bash
+ssh -Y dlogin01      # trusted X11 forwarding; -X is stricter and sometimes flaky
+```
+
+Or once and forever in `~/.ssh/config` on WCOSS2:
+
+```
+Host dlogin0?
+    ForwardX11 yes
+    ForwardX11Trusted yes
+```
+
+Now plain `ssh dlogin01` carries X11. Verify with `echo $DISPLAY` on the
+inner shell — it shows a *new* number (e.g. `localhost:11.0`) different
+from the outer hop's number.
 
 ## 1.2 Every new terminal on WCOSS2
 
@@ -64,14 +138,46 @@ ls /lfs/h2/emc/global/noscrub/${USER}/ecflow_c96/
 
 ## 1.4 Open the GUI (optional but useful)
 
-Enable Xming on Windows, then:
+With X11 forwarding in place (see §1.1), launch the GUI:
 
 ```bash
 source ~/ecflow_c96.env
 ecflow_ui &
-# In GUI: Servers → Manage Servers → Add server
-# Name: c96   Host: dlogin01   Port: 2137
 ```
+
+First-run setup — `ecflow_ui` starts with no servers configured:
+
+1. Top menu: **Servers → Manage Servers**.
+2. Click **Add server** (or `+`).
+3. Fill in:
+   - **Name**: `c96` (anything — just a label)
+   - **Host**: `dlogin01`
+   - **Port**: `2137`
+4. Check "Add to current view".
+5. **OK** → close.
+
+The server appears in the left **Servers** panel. Expand the triangle next
+to its name; the `gfs_c96` suite tree should be underneath.
+
+If the panel is empty after adding the server:
+
+```bash
+# CLI sanity check — confirm the server actually has a suite:
+ecflow_client --host=dlogin01 --port=2137 --suites
+# expect: gfs_c96
+```
+
+- CLI shows the suite, GUI doesn't → right-click the server in the left
+  panel → **Connect** then **Refresh** (F5).
+- Server icon stays grey/red after Connect → wrong host/port. Right-click
+  → **Edit Server** and verify `dlogin01:2137` exactly.
+- The GUI's saved server list lives at `~/.ecflow_ui/servers` (one line per
+  server: `<name> <host> <port> <flag1> <flag2>`). If "Add server" didn't
+  persist, edit this file directly and restart `ecflow_ui`.
+
+GUI feels sluggish over X11? Enable SSH compression in SecureCRT
+(**Connection → SSH2 → Advanced → Use compression**), or stick with the CLI
+`--get_state` workflow from §1.8.
 
 ## 1.5 Load the suite
 
@@ -385,6 +491,12 @@ the `--init` callback never reached your server. Almost always this is the
 | `No such file or directory: .../jobs/JGLOBAL_*` | `jobs/` symlink missing; J-scripts are in `dev/jobs/` | `ln -s dev/jobs jobs` at repo root (already committed) |
 | `/lfs/f1/ops/prod/tmp: No such file or directory` | `DATAROOT` points at ops-only filesystem | Set `DATAROOT` to your noscrub area; `bootstrap.sh` does this |
 | "Connection refused on port 34637" | `ECF_PORT` not set; client used production dhostfile | `unset ECF_HOSTFILE; export ECF_HOST=dlogin01; export ECF_PORT=2137` |
+| `ecflow_ui` window opens but is empty / no servers shown | Fresh GUI has no servers configured | Servers → Manage Servers → Add server (`dlogin01`, port `2137`) |
+| Server added but tree is empty | GUI not connected, or no suite loaded | Right-click server → Connect → Refresh (F5); verify `--suites` from CLI |
+| `ecflow_ui: cannot open display` | XLaunch not running, or `$DISPLAY` empty | Start XLaunch; verify `echo $DISPLAY` prints `localhost:N.0` |
+| `Authorization required, but no authorization protocol specified` | "Disable access control" not checked in XLaunch | Re-launch XLaunch with that box checked, or `xhost +localhost` (less secure) |
+| `xclock` works but `ecflow_ui` is sluggish | X11 over SSH ships uncompressed pixels | Enable SSH compression in SecureCRT, or use the CLI |
+| `$DISPLAY` set on outer hop, empty after `ssh dlogin01` | Inner SSH hop doesn't forward X11 | `ssh -Y dlogin01`, or set `ForwardX11 yes` in `~/.ssh/config` on WCOSS2 |
 
 ## 2.12 What to do when on a different login node
 
