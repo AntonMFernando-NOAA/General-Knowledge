@@ -235,6 +235,106 @@ Begin failed as suite 'gfs_v17_test' is not loaded.
 ```
 You ran `--begin` before `--load` succeeded. Re-run the load step and check the error.
 
+## 3.5 Common preprocessing failures (after `--begin`)
+
+These show up in `ecflow_client --get_state /path/to/task` between the `abort<:` and `>abort` markers. Tasks go to `aborted` immediately without ever reaching PBS.
+
+```
+EcfFile::create_job: Failed preprocessing :
+TASK:/.../jgfs_stage_ic :
+path/cmd(.../jgfs_stage_ic.ecf):
+Could not open include file: /lfs/h2/emc/global/noscrub/USER/ecflow_c96/head.h
+```
+
+ecFlow 5.6's preprocessor searches `${ECF_HOME}` for `%include <head.h>` — **not** `${ECF_INCLUDE}`, even when `ECF_INCLUDE` is set on the suite. The fix is to put real copies of the include files in `${ECF_HOME}`:
+
+```bash
+cp ${HOMEgfs}/dev/ecf/<test>/include/head.h     "${ECF_HOME}/head.h"
+cp ${HOMEgfs}/dev/ecf/<test>/include/tail.h     "${ECF_HOME}/tail.h"
+cp ${HOMEgfs}/dev/ecf/<test>/include/envir-p1.h "${ECF_HOME}/envir-p1.h"
+```
+
+Use `cp`, not `ln -s`. Symlinks in `${ECF_HOME}` are not consistently honored by the preprocessor; real files always work.
+
+```
+Could not open include file: %HOMEgfs%/dev/ecf/c48_atm/include/head.h
+```
+
+`%HOMEgfs%` didn't expand. Either:
+- `HOMEgfs` is not set as a sibling `edit` on the suite (unlikely if your bootstrap or inlined header runs).
+- Nested variable expansion failed at preprocess time. Use **absolute paths** in `ECF_INCLUDE` and `ECF_FILES` rather than `%HOMEgfs%/...` so resolution doesn't depend on context. Build-time generators should bake these in:
+  ```python
+  HOMEgfs_ABS = str(REPO_ROOT)
+  edits = [
+      f"edit ECF_FILES   '{HOMEgfs_ABS}/dev/ecf/c48_atm/scripts'",
+      f"edit ECF_INCLUDE '{HOMEgfs_ABS}/dev/ecf/c48_atm/include'",
+  ]
+  ```
+
+## 3.6 Common J-job failures (after preprocessing succeeds)
+
+When the task makes it past preprocessing, you'll see it move `queued` → `submitted` → `active`, and PBS will assign a job id (visible in `qstat`). Failures from here on appear in the `${ECF_HOME}<task>.<tryno>` log file rather than in the abort message itself.
+
+```
+FATAL ERROR: [.../ush/jjob_header.sh]: Unable to load config config.stage_ic
+RETURN CODE 1
+ABNORMAL EXIT
+```
+
+The J-job is looking for `${EXPDIR}/config.<jobname>` and not finding it. ecFlow's def file by itself does **not** populate the experiment directory — you have to run `setup_expt.py` (the same script Rocoto users run) to create the config files:
+
+```bash
+RUNTESTS=/lfs/h2/emc/global/noscrub/${USER}/c48_atm
+mkdir -p "${RUNTESTS}/EXPDIR" "${RUNTESTS}/COMROOT"
+
+python3 dev/workflow/setup_expt.py gfs forecast-only \
+  --pslot c48_atm \
+  --app ATM \
+  --resdetatmos 48 \
+  --idate 2021032312 \
+  --edate 2021032312 \
+  --comroot "${RUNTESTS}/COMROOT" \
+  --expdir  "${RUNTESTS}/EXPDIR" \
+  --yaml dev/ci/cases/yamls/gfs_defaults_ci.yaml \
+  --overwrite
+```
+
+Then `EXPDIR` on the ecFlow suite (or the env you generate the def under) must point at `${RUNTESTS}/EXPDIR/<pslot>/`, where the configs landed.
+
+```
+ECF_HOST and ECF_PORT not reaching dev server
+(task hangs in submitted forever, or qsub-side it looks like signal kill)
+```
+
+`module load prod_envir` inside `head.h` re-points `ECF_HOST`/`ECF_PORT` at NCO's production servers via the system `dhostfile`. The dev `head.h` must include this patch right before `ecflow_client --init`:
+
+```bash
+unset ECF_HOSTFILE
+export ECF_HOST=%ECF_LOGHOST%
+export ECF_PORT=%ECF_PORT%
+```
+
+Without it, the task's init/complete callbacks never reach your dev server.
+
+```
+killed by signal (likely via qdel)
+```
+
+Misleading. Often this is your job exiting from `set -e` after a script-level error in `head.h` or the J-job, not actually a `qdel`. Read `${ECF_HOME}<task>.<tryno>` — the FATAL ERROR line near the bottom names the real cause.
+
+## 3.7 The four-layer failure progression
+
+When a task aborts, the failure is always at one of four layers. Diagnose them in this order — fix the lowest layer first or the higher ones lie.
+
+| Layer | Symptom | Look at | Common fix |
+|-------|---------|---------|------------|
+| 1. Connection | `Connection refused on dlogin01:34637` | `echo $ECF_PORT`, `ecflow_client --ping` | `unset ECF_HOSTFILE; source ~/ecflow_c96.env` |
+| 2. Preprocessing | `Could not open include file:` (no `.job1` written) | `ecflow_client --get_state <task>` (`abort<:...>abort` block) | Copy include files into `${ECF_HOME}`; use absolute paths in `ECF_INCLUDE`/`ECF_FILES` |
+| 3. PBS submission | Task `aborted`, no `.1` log, ecFlow says `qsub failed` | `${ECF_HOME}<task>.sub1` | Fix PBS resource directives (`-A`, `-q`, `-l select=...`) |
+| 4. J-job execution | Task `aborted` with content in `.1`, often `FATAL ERROR` | `tail -50 ${ECF_HOME}<task>.<tryno>` | Run `setup_expt.py`, stage ICs, fix module loads |
+
+A task only reaches layer N when layers 1..N-1 all succeed. So if layer 1 isn't right, you'll never see layer 2 errors — you'll see layer 1 errors over and over.
+
 ---
 
 # Section 4 — Daily mistakes to avoid
@@ -303,34 +403,115 @@ Or do a full delete-and-reload (Section 3.2) if `--replace` complains.
 
 ---
 
-# Section 5 — TL;DR cheat sheet
+## 4.10 Don't symlink `head.h` into `${ECF_HOME}`
 
-Pin this to your wall:
+ecFlow 5.6 follows symlinks inconsistently for `%include <name>` resolution. Use `cp` to put real copies in `${ECF_HOME}` instead. Symlinks may work today and silently break on the next reload.
+
+## 4.11 Don't reuse another test's `include/` directory
+
+Each test directory (`dev/ecf/c48_atm/`, `dev/ecf/c96/`, etc.) should own its own `include/head.h` and friends. If test A points at test B's include dir and someone deletes test B, test A breaks for a non-obvious reason. Keep them self-contained even if it duplicates a few files.
+
+## 4.12 Don't expect a fresh def to populate `${EXPDIR}`
+
+ecFlow's `--load` only registers the suite tree on the server. The J-jobs need `${EXPDIR}/config.<jobname>` files which only `setup_expt.py` (the Rocoto setup) creates. Run that **first** for the experiment, then point your ecFlow def at the same `${EXPDIR}`. Without it the first J-job aborts with `Unable to load config config.<jobname>`.
+
+## 4.13 Don't trust the IDE-to-WCOSS2 sync blindly
+
+If you edit a file in the IDE, verify it actually reached WCOSS2 before assuming changes took effect:
 
 ```bash
-# Every morning:
+grep -c "<some marker from your edit>" path/to/file
+```
+
+When in doubt, deploy via `cat > file << 'EOF' ... EOF` directly on WCOSS2 to be sure.
+
+# Section 5 — TL;DR cheat sheet
+
+Pin this to your wall.
+
+## Every morning
+
+```bash
 ssh -Y dlogin01
+unset ECF_HOSTFILE
 source ~/ecflow_c96.env
 ecflow_client --ping
-ecflow_client --get_state | grep server_state         # must say RUNNING
-ecflow_client --get_state | grep -E "^suite "         # what's loaded?
+ecflow_client --get_state | grep -E "STATE|server_state"   # must imply RUNNING
+ecflow_client --suites                                      # what's loaded?
+```
 
-# If server is dead:
+## If server is dead
+
+```bash
 mkdir -p "${ECF_HOME}"
 ecflow_start.sh -p "${ECF_PORT}" -d "${ECF_HOME}"
+```
 
-# If server is SHUTDOWN/HALTED:
+## If server is SHUTDOWN/HALTED
+
+```bash
 ecflow_client --restart
+```
 
-# Clean reload of a suite:
-cd "${HOMEgfs}"
-ecflow_client --delete=force=yes /gfs_c96 2>/dev/null
-ecflow_client --load=dev/ecf/c96/defs/gfs_c96.def
-ecflow_client --suspend=/gfs_c96
-bash dev/ecf/c96/bootstrap.sh
-ecflow_client --resume=/gfs_c96
-ecflow_client --begin=gfs_c96
+## First-time setup of a new test (one-time per experiment)
 
-# Open the GUI (if X11 is working):
+```bash
+# 1. Populate EXPDIR with config files via Rocoto's setup tool:
+RUNTESTS=/lfs/h2/emc/global/noscrub/${USER}/<test_name>
+mkdir -p "${RUNTESTS}/EXPDIR" "${RUNTESTS}/COMROOT"
+python3 dev/workflow/setup_expt.py gfs forecast-only \
+  --pslot <test_name> --app ATM --resdetatmos 48 \
+  --idate 2021032312 --edate 2021032312 \
+  --comroot "${RUNTESTS}/COMROOT" --expdir "${RUNTESTS}/EXPDIR" \
+  --yaml dev/ci/cases/yamls/gfs_defaults_ci.yaml --overwrite
+
+# 2. Generate the def into EXPDIR:
+EXPDIR="${RUNTESTS}/EXPDIR/<test_name>" python3 dev/ecf/<test_name>/build_def.py
+
+# 3. Copy include files into ECF_HOME (preprocessing requirement):
+cp dev/ecf/<test_name>/include/{head,tail,envir-p1}.h "${ECF_HOME}/"
+```
+
+## Load and run
+
+```bash
+SUITE=gfs_<test_name>
+DEF="${RUNTESTS}/EXPDIR/<test_name>/${SUITE}.def"
+
+ecflow_client --delete=force=yes "/${SUITE}" 2>/dev/null
+ecflow_client --load="${DEF}"
+ecflow_client --suspend="/${SUITE}"
+
+# Verify variables look right BEFORE running:
+ecflow_client --query variable "/${SUITE}/primary":HOMEgfs
+ecflow_client --query variable "/${SUITE}/primary":ECF_FILES
+ecflow_client --query variable "/${SUITE}/primary":ECF_INCLUDE
+
+# Begin:
+ecflow_client --resume="/${SUITE}"
+ecflow_client --begin="${SUITE}"
+
+# Watch:
+sleep 15
+ecflow_client --get_state "/${SUITE}" | grep -oE "state:[a-z]+" | sort | uniq -c
+qstat -u "${USER}"
+```
+
+## When something aborts
+
+```bash
+TASK=/${SUITE}/<full/task/path>
+ecflow_client --get_state "${TASK}"           # see abort<:...>abort message
+ls -lt "${ECF_HOME}${TASK}".* 2>/dev/null
+tail -50 $(ls -t "${ECF_HOME}${TASK}".[0-9]* | head -1)
+```
+
+Walk the four-layer failure progression (§3.7):
+**connection → preprocessing → submission → J-job execution.**
+Fix the lowest layer first.
+
+## Open the GUI (if X11 is working)
+
+```bash
 ecflow_ui &
 ```
