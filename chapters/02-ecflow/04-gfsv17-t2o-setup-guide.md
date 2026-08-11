@@ -48,7 +48,7 @@ Edit `${HOMEgfs}/ecf/defs/gfs_prod.def` and change the following variables at th
 |----------|-------------|
 | `PACKAGEHOME` | Location where you cloned global-workflow |
 | `ENVIR` | Switch from `prod` to `para` as appropriate |
-| `QUEUE` | A queue you can use (`dev`, `devmax`, etc.) |
+| `QUEUE` | A queue you can use (default: `dev`; options: `devmax`, etc.) |
 | `OUTPUTDIR` | Your output location |
 | `EXPDIR` | Full path to `packagehome/parm/config/gfs` |
 
