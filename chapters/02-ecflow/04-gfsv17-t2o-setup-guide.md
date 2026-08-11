@@ -323,6 +323,212 @@ Reference:
 - [NOAA-EMC/WAFS ecf dev docs](https://github.com/NOAA-EMC/WAFS/tree/develop/dev/ecf)
 - [ecFlow setup Google Doc](https://docs.google.com/document/d/1Yoc9AnXEhNHiHkE9i5PwyuDk8ye5kgpIWIMk6aeBfxU/edit?tab=t.0#heading=h.y9m6eb75yk03)
 
+`ecflow_server` can only be started on dedicated ecflow server nodes. On WCOSS2, the development server nodes are:
+
+| Cluster | Nodes |
+|---------|-------|
+| Cactus | `cdecflow01`, `cdecflow02` |
+| Dogwood | `ddecflow01`, `ddecflow02` |
+
+### Step 1: SSH to a server node
+
+```bash
+ssh ddecflow01
+```
+
+### Step 2: Set environment variables (one-time before starting the server)
+
+```bash
+# For personal use
+export ECF_ROOT=${HOME}/ecflow
+
+# For role account use
+export ECF_ROOT=/lfs/h2/emc/global/noscrub/emc.global/ecflow
+
+# For all cases
+export ECF_OUTPUTDIR=${ECF_ROOT}/output
+export LFS_OUTPUTDIR=${ECF_ROOT}/submit
+export ECF_COMDIR=${ECF_ROOT}/com
+mkdir -p ${ECF_ROOT}/output
+mkdir -p ${ECF_ROOT}/submit
+mkdir -p ${ECF_ROOT}/com
+```
+
+### Step 3: (Optional) Set up access control for others
+
+If you want others to view or modify your ecflow server, create a `.lists` file at:
+
+```
+${LFS_OUTPUTDIR}/${ECF_HOST}.${ECF_PORT}.ecf.lists
+```
+
+Contents — list the users allowed to access your server. A `-` prefix means read-only access; no prefix means read/write:
+
+```
+david.huber
+catherine.thomas
+jessica.meixner
+ruiyu.sun
+travis.j.elless
+- jiande.wang
+- russell.manser
+- carlos.m.diaz
+```
+
+Lock it down:
+
+```bash
+chmod 600 ${LFS_OUTPUTDIR}/${ECF_HOST}.${ECF_PORT}.ecf.lists
+```
+
+Then declare the variable:
+
+```bash
+export ECF_LISTS=${ECF_ROOT}/${ECF_HOST}.${ECF_PORT}.ecf.lists
+```
+
+### Step 4: Start the server
+
+```bash
+module load ecflow
+server_check.sh ${ECF_ROOT}
+```
+
+> **WARNING**: Do NOT use `ecflow_start.sh`. It starts on the incorrect port number.
+
+```bash
+ecflow_client --restart
+```
+
+This will start the server and print out the port number.
+
+### WRITE DOWN THE PORT NUMBER
+
+If you lose the port number, you can recover it:
+
+```bash
+echo $(( $(id -u) + 2000 ))
+```
+
+### Step 5: Exit the server node
+
+The `ecflow_server` only needs to be started **once**. Once running, close the window and exit back to a regular WCOSS2 login node:
+
+```bash
+exit
+```
+
+> **Important**: After starting the server, you must exit the ecflow server node and run all subsequent `ecflow_client` commands from a login node. Commands run on the ecflow server node itself will not succeed.
+
+### Convenience: add to your `.bashrc` or a startup script
+
+To avoid setting `ECF_PORT`, `ECF_HOST`, and loading ecflow every time you log in, add the following to your `~/.bashrc` or save it as a script (e.g. `~/ecflow_env.sh`) and source it at the start of each session:
+
+```bash
+export ECF_PORT=34637
+export ECF_HOST="ddecflow01"
+module load ecflow
+```
+
+Then every new terminal is ready to talk to the server immediately:
+
+```bash
+ecflow_client --ping   # should succeed without any additional setup
+```
+
+---
+
+## 12. Running and Testing Jobs via the ecFlow GUI
+
+The ecFlow GUI (`ecflow_ui`) provides an interactive way to monitor, trigger, and debug jobs without memorizing CLI commands.
+
+### Launch the GUI
+
+From a login node with X11 forwarding enabled (see [Chapter 01, Section 1.1](./01-running-a-suite-on-wcoss2.md) for X11 setup):
+
+```bash
+module load ecflow
+export ECF_HOST=ddecflow02   # or your server node
+export ECF_PORT=<your_port>
+ssh -Y ${ECF_HOST}
+ecflow_ui &
+```
+
+### Add your server (first time only)
+
+1. Top menu: **Servers → Manage Servers**
+2. Click **Add server** (or `+`)
+3. Fill in:
+   - **Name**: `gfsv17` (any label)
+   - **Host**: your `ECF_HOST` (e.g. `ddecflow02`)
+   - **Port**: your `ECF_PORT`
+4. Check "Add to current view"
+5. **OK** → close
+
+The suite tree appears in the left panel.
+
+### Understanding the color codes
+
+| Color | State | Meaning |
+|-------|-------|---------|
+| Grey | queued | Waiting for triggers/dependencies |
+| Cyan | submitted | In the PBS queue |
+| Blue | active | Running on a compute node |
+| Green | complete | Finished successfully |
+| Red | aborted | Failed |
+
+### Running individual tasks
+
+Right-click any task in the tree to:
+
+- **Run** — force-submit it immediately (ignoring triggers)
+- **Requeue** — reset it back to queued so it runs again when triggers are met
+- **Complete** — mark it done without running (useful for skipping)
+- **Suspend** — freeze it so it won't run even when eligible
+- **Resume** — un-freeze a suspended task
+
+Or use the equivalent CLI:
+
+```bash
+# Force-run a specific task (ignoring triggers)
+ecflow_client --run /gfs_v17_nco/primary/00/gfs/v17.0/gdas/prep/marine/jgdas_marine_obs_dump
+
+# Requeue a failed task
+ecflow_client --requeue=force /gfs_v17_nco/primary/00/gfs/v17.0/gdas/prep/atmos/jgdas_atmos_prep
+
+# Mark a task complete (skip it)
+ecflow_client --force=complete /gfs_v17_nco/primary/00/gfs/v17.0/gdas/analysis/atmos/jgdas_atmos_anal
+```
+
+### Viewing job output
+
+Right-click a task → **Output** to see the job's stdout/stderr directly in the GUI. This is equivalent to reading the log file on disk.
+
+### Testing a subset of the workflow
+
+To test just a few jobs without running the entire suite:
+
+1. **Suspend the suite root**: right-click the suite name → Suspend
+2. **Resume only the family you want to test**: right-click the specific family → Resume
+3. **Run or trigger the starting task**: right-click → Run
+
+This lets you iterate on a single job without waiting for the entire dependency chain.
+
+### Iterating on a failing task
+
+When debugging a task that keeps failing:
+
+1. Read the error in the **Output** tab (right-click → Output)
+2. Fix the underlying issue (edit script, stage data, fix config)
+3. Right-click the task → **Requeue**
+4. It will re-run when its triggers are satisfied, or right-click → **Run** to force it immediately
+
+### Bulk operations
+
+- Right-click a **family** (not a task) to apply actions to all tasks within it
+- `ecflow_client --force=complete recursive /suite/family` completes an entire subtree
+- `ecflow_client --requeue=abort /suite` requeues all aborted tasks in the suite
+
 ---
 
 ## Open Questions
