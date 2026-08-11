@@ -192,7 +192,7 @@ ecflow_client --begin gfs_v17_nco
 From your personal account (not the group account):
 
 ```bash
-ssh -Y ddecflow02
+ssh -Y ddecflow01
 module load ecflow
 ecflow_ui &
 ```
@@ -448,8 +448,8 @@ From a login node with X11 forwarding enabled (see [Chapter 01, Section 1.1](./0
 
 ```bash
 module load ecflow
-export ECF_HOST=ddecflow02   # or your server node
-export ECF_PORT=<your_port>
+export ECF_HOST=ddecflow01   # or your server node
+export ECF_PORT=<your_port> (e.g. `34637`)
 ssh -Y ${ECF_HOST}
 ecflow_ui &
 ```
@@ -460,7 +460,7 @@ ecflow_ui &
 2. Click **Add server** (or `+`)
 3. Fill in:
    - **Name**: `gfsv17` (any label)
-   - **Host**: your `ECF_HOST` (e.g. `ddecflow02`)
+   - **Host**: your `ECF_HOST` (e.g. `ddecflow01`)
    - **Port**: your `ECF_PORT`
 4. Check "Add to current view"
 5. **OK** → close
