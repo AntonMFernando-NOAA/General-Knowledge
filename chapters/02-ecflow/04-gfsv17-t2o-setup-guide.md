@@ -140,10 +140,10 @@ cp -rf /lfs/h1/ops/prod/com/gfs/v16.3/syndat .
 
 ```bash
 # On Cactus (where the group account ecflow server is running)
-export ECF_HOST="cdecflow02"
+export ECF_HOST="cdecflow01"
 
 # On Dogwood (where the group account ecflow server is running)
-export ECF_HOST="ddecflow02"
+export ECF_HOST="ddecflow01"
 ```
 
 ### If this is the first time (or the server needs a restart)
