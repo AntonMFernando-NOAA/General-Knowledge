@@ -166,7 +166,9 @@ cd ${HOMEglobal}
 python3 dev/workflow/ecflow/c48_atm_ecflow.py
 ```
 
-Answer `y` to the cleanup and delete prompts. The suite starts automatically.
+Answer `y` to the cleanup and delete prompts. The suite is loaded but
+**not started**. The script prints the `ecflow_client --begin` command
+to run when you are ready.
 
 ### With custom paths
 
@@ -176,17 +178,6 @@ python3 dev/workflow/ecflow/c48_atm_ecflow.py \
     --comroot /scratch4/NCEPDEV/stmp/${USER}/COMROOT \
     --expdir /scratch3/NCEPDEV/global/${USER}/EXPDIR \
     --stmp /scratch4/NCEPDEV/stmp/${USER}
-```
-
-### Load without starting
-
-```bash
-python3 dev/workflow/ecflow/c48_atm_ecflow.py --load-only
-```
-
-Then inspect in `ecflow_ui` and start manually:
-```bash
-ecflow_client --begin=C48_ATM_ecflow
 ```
 
 ### CLI options
@@ -199,7 +190,6 @@ ecflow_client --begin=C48_ATM_ecflow
 | `--expdir PATH` | Override experiment config directory |
 | `--stmp PATH` | Override runtime scratch directory |
 | `--suite-name NAME` | Override ecFlow suite name |
-| `--load-only` | Load the suite but do not start it |
 | `--overwrite` | Overwrite a previously created experiment |
 
 ### What the script does behind the scenes
@@ -208,7 +198,9 @@ ecflow_client --begin=C48_ATM_ecflow
 2. Creates the experiment via `setup_expt`
 3. Generates the `.def` file and copies `.ecf` scripts
 4. Loads the suite into the ecFlow server (prompts if it already exists)
-5. Begins the suite
+
+The suite is loaded but **not started**. The script prints the
+`ecflow_client --begin` command to run when you are ready.
 
 ## 1.6 Monitor the run
 
@@ -358,10 +350,9 @@ manually:
    `ecflow_suite_factory` to build the `.def` file and copy `.ecf` scripts.
 3. **Server load** — calls `ecflow_client --load` to push the `.def` into
    the running ecFlow server.
-4. **Begin** — calls `ecflow_client --begin` to start the suite.
 
-The `--load-only` flag stops after step 3 so you can inspect the suite
-before starting it.
+The suite is loaded but not started. The script prints the
+`ecflow_client --begin` command to run when you are ready.
 
 ## 2.2 What the suite looks like
 
