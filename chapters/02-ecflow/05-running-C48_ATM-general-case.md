@@ -81,14 +81,11 @@ unset ECF_HOSTFILE
 export HOMEglobal=/scratch3/NCEPDEV/global/${USER}/global-workflow
 
 # Choose an ecFlow server
-#
-# Option A: Use a shared server (ask your team for the host/port)
-export ECF_HOST=uecflow01
-export ECF_PORT=23385
-#
-# Option B: Start your own (see §1.4)
-#   export ECF_PORT=$(( $(id -u) + 1500 ))
-#   echo "Your ECF_PORT: ${ECF_PORT}"
+# Each user runs their own ecFlow server on a unique port.
+# Use your UID offset by 1500 to avoid collisions with other users:
+export ECF_PORT=$(( $(id -u) + 1500 ))
+export ECF_HOST=$(hostname)
+echo "Your ecFlow server: ${ECF_HOST}:${ECF_PORT}"
 
 # Set the ecFlow job directory
 export ECF_HOME=/scratch3/NCEPDEV/global/${USER}/ecflow
@@ -323,8 +320,8 @@ ssh -X <username>@ursa.rdhpcs.noaa.gov
 # 2. Source your environment (or add to ~/.bashrc once)
 module load ecflow
 unset ECF_HOSTFILE
-export ECF_HOST=uecflow01
-export ECF_PORT=23385
+export ECF_PORT=$(( $(id -u) + 1500 ))
+export ECF_HOST=$(hostname)
 export ECF_HOME=/scratch3/NCEPDEV/global/${USER}/ecflow
 export HOMEglobal=/scratch3/NCEPDEV/global/${USER}/global-workflow
 
@@ -454,12 +451,12 @@ ecflow` has been run and `unset ECF_HOSTFILE` is set.
 ## 3.2 "Cannot reach ecFlow server"
 
 ```
-[ERROR] Cannot reach ecFlow server at uecflow01:23385
+[ERROR] Cannot reach ecFlow server at <hostname>:<port>
 ```
 
-**Fix:** Check that the server is running (`ecflow_client --ping`). If using
-a shared server, verify the hostname and port. If running your own, start it
-with `ecflow_start.sh`.
+**Fix:** Check that the server is running (`ecflow_client --ping`). Verify
+the hostname and port match where you started the server. If it's not
+running, start it with `ecflow_start.sh` (see §1.4).
 
 ## 3.3 Suite delete times out
 
