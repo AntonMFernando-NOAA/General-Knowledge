@@ -13,7 +13,10 @@ The book grows over time. Chapters are added as topics come up in real work.
 ### Chapter 2 — ecFlow
 - [2.1 Running an ecFlow Suite on WCOSS2](chapters/02-ecflow/01-running-a-suite-on-wcoss2.md)
 - [2.2 Development Setup: Rocoto vs ecFlow](chapters/02-ecflow/02-development-setup.md)
+- [2.3 Resuming Work on an ecFlow Suite](chapters/02-ecflow/03-resuming-work-on-a-suite.md)
+- [2.4 GFSv17 T2O Setup Guide](chapters/02-ecflow/04-gfsv17-t2o-setup-guide.md)
 - [2.5 Running the C48_ATM Case with ecFlow (General Case)](chapters/02-ecflow/05-running-C48_ATM-general-case.md)
+- [2.6 C48_ATM Complete Process Flow](chapters/02-ecflow/06-c48-atm-process-flow.md)
 
 _(more chapters to come)_
 
