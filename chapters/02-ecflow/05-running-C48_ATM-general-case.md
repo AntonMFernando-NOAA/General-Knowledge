@@ -74,22 +74,32 @@ in each session.
 # Load the ecFlow module
 module load ecflow
 
-# Remove any stale host file
+# ── Step 1a: Remove any stale host file ──────────────────────────
+# ecFlow should discover the server via ECF_HOST / ECF_PORT,
+# not a host file left over from a previous session.
 unset ECF_HOSTFILE
 
-# Set the global-workflow repo path
+# ── Step 1b: Set the global-workflow repo path ───────────────────
+# Point this to wherever you cloned the repo.  The loader script
+# auto-detects HOMEglobal from its own location, but ecFlow tasks
+# read it from the environment during validation.
 export HOMEglobal=/scratch3/NCEPDEV/global/${USER}/global-workflow
 
-# Choose an ecFlow server
+# ── Step 1b-workaround: Machine detection on ufe nodes ───────────
+# The mount-based auto-detection in hosts.py may misidentify some
+# Ursa front-end nodes (e.g. ufe12) as Hera.  If you hit unexpected
+# platform errors, force the machine identity:
+export MACHINE_ID=URSA
+
+# ── Step 1c: Choose an ecFlow server ─────────────────────────────
 # Each user runs their own ecFlow server on a unique port.
 # Use your UID offset by 1500 to avoid collisions with other users:
 export ECF_PORT=$(( $(id -u) + 1500 ))
 export ECF_HOST=$(hostname)
-echo "Your ecFlow server: ${ECF_HOST}:${ECF_PORT}"
-
-# Set the ecFlow job directory
 export ECF_HOME=/scratch3/NCEPDEV/global/${USER}/ecflow
+export HOMEglobal=/scratch3/NCEPDEV/global/${USER}/global-workflow  # adjust to your clone path
 mkdir -p "${ECF_HOME}"
+echo "Your ecFlow server: ${ECF_HOST}:${ECF_PORT}"
 ```
 
 Verify:
@@ -312,10 +322,11 @@ ssh -X <username>@ursa.rdhpcs.noaa.gov
 # 2. Source your environment (or add to ~/.bashrc once)
 module load ecflow
 unset ECF_HOSTFILE
+export HOMEglobal=/scratch3/NCEPDEV/global/${USER}/global-workflow
+export MACHINE_ID=URSA   # workaround for ufe node misdetection
 export ECF_PORT=$(( $(id -u) + 1500 ))
 export ECF_HOST=$(hostname)
 export ECF_HOME=/scratch3/NCEPDEV/global/${USER}/ecflow
-export HOMEglobal=/scratch3/NCEPDEV/global/${USER}/global-workflow
 
 # 3. Verify the server is alive
 ecflow_client --ping
