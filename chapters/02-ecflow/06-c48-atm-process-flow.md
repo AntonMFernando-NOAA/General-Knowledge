@@ -1,25 +1,48 @@
-# Chapter 2.6 — feature/ecflow-c48-atm — Complete Process Flow
+# ecFlow C48_ATM Test — Complete Process Flow
 
----
-
-## Step 0: Start the ecFlow Server (one-time per session)
+## Step 0: Start the ecFlow Server (one-time)
 
 ```
-User on Ursa login node (ufe01)
+User on Ursa login node (e.g. ufe01)
 │
+├── ssh uecflow01                    # server runs on the dedicated ecFlow node
+│
+│   On uecflow01:
+│   ├── module load ecflow
+│   ├── export ECF_PORT=$(( $(id -u) + 1500 ))
+│   ├── export ECF_HOME=/scratch3/NCEPDEV/global/$USER/ecflow
+│   ├── mkdir -p ${ECF_HOME}
+│   ├── ecflow_start.sh -p ${ECF_PORT} -d ${ECF_HOME}
+│   │     └── starts ecflow_server daemon on uecflow01:${ECF_PORT}
+│   └── exit                         # back to login node
+│
+│   Back on login node (ufe01):
 ├── module load ecflow
 ├── unset ECF_HOSTFILE
+├── export ECF_HOST=uecflow01        # point client to the ecFlow node
 ├── export ECF_PORT=$(( $(id -u) + 1500 ))
 ├── export ECF_HOME=/scratch3/NCEPDEV/global/$USER/ecflow
 ├── export HOMEglobal=/scratch3/NCEPDEV/global/$USER/global-workflow
-├── export MACHINE_ID=URSA          # workaround for ufe node detection
-├── export HPC_ACCOUNT=fv3-cpu      # Slurm account for job submission
-│
-├── ecflow_start.sh -p $ECF_PORT -d $ECF_HOME
-│     └── starts ecflow_server daemon on this host:port
+├── export MACHINE_ID=URSA           # workaround for ufe node detection
+├── export HPC_ACCOUNT=fv3-cpu       # Slurm account for job submission
 │
 └── ecflow_client --ping
-      └── "ping server(ufe01:24385) succeeded"
+      └── "ping server(uecflow01:24385) succeeded"
+```
+
+If the server has stopped (node reboot, etc.):
+
+```
+├── ssh uecflow01
+│   ├── module load ecflow
+│   ├── export ECF_PORT=$(( $(id -u) + 1500 ))
+│   ├── export ECF_HOME=/scratch3/NCEPDEV/global/$USER/ecflow
+│   ├── ps -u $USER -f | grep ecflow_server   # check if running
+│   ├── ecflow_start.sh -p ${ECF_PORT} -d ${ECF_HOME}   # restart
+│   │     └── restores state from checkpoint — suites reappear
+│   └── exit
+│
+└── ecflow_client --ping             # verify from login node
 ```
 
 ## Step 1: Launch the Test Case
@@ -100,7 +123,6 @@ c48_atm_ecflow.py                              ← entry point
       │                 │       edit ECF_HOME '...'
       │                 │       edit ECF_JOB_CMD 'ecf_sbatch.sh %STEP% %EXPDIR% %ECF_JOBOUT% %ECF_JOB%'
       │                 │       edit EXPDIR '...'
-      │                 │       edit ACCOUNT '...'
       │                 │       ...
       │                 │       family 2021032312
       │                 │         edit PDY '20210323'
@@ -134,7 +156,7 @@ c48_atm_ecflow.py                              ← entry point
       │
       ├── [Step 3/4] load_suite(suite_name, def_file)
       │     │
-      │     ├── ecflow_client --ping         (verify server alive)
+      │     ├── ecflow_client --ping         (verify server alive on uecflow01)
       │     ├── ecflow_client --delete=force  (remove old suite if exists)
       │     └── ecflow_client --load=<def>   (load .def into server)
       │
@@ -148,7 +170,7 @@ c48_atm_ecflow.py                              ← entry point
 ```
 $ ecflow_client --begin=my_C48_test
 
-ecflow_server
+ecflow_server (on uecflow01)
 │
 └── walks the suite tree, finds tasks with satisfied triggers
 ```
@@ -156,7 +178,8 @@ ecflow_server
 ## Step 3: Task Submission (per task, repeated for each)
 
 ```
-ecflow_server finds: /my_C48_test/2021032312/gfs/stage_ic (triggers satisfied)
+ecflow_server (on uecflow01) finds:
+  /my_C48_test/2021032312/gfs/stage_ic (triggers satisfied)
 │
 ├── reads EXPDIR/ecf_scripts/stage_ic.ecf
 │     %include <head.h>      → dev/ecflow/utils/head.h
@@ -177,7 +200,7 @@ ecflow_server finds: /my_C48_test/2021032312/gfs/stage_ic (triggers satisfied)
 ├── writes: ECF_HOME/my_C48_test/2021032312/gfs/stage_ic.job1
 │     (pure bash — no macros left)
 │
-└── runs ECF_JOB_CMD:
+└── runs ECF_JOB_CMD (from uecflow01):
       ecf_sbatch.sh stage_ic <EXPDIR> <jobout_path> <job1_path>
       │
       │   (dev/ecflow/utils/ecf_sbatch.sh)
@@ -209,7 +232,7 @@ ecflow_server finds: /my_C48_test/2021032312/gfs/stage_ic (triggers satisfied)
           ecFlow captures 1618091 as ECF_RID
 ```
 
-## Step 4: Job Execution (on compute node)
+## Step 4: Job Execution (on Slurm compute node)
 
 ```
 Slurm allocates compute node, runs stage_ic.job1:
@@ -238,16 +261,16 @@ Slurm allocates compute node, runs stage_ic.job1:
 │
 ├── (on success)
 │     module load ecflow
-│     ecflow_client --complete               ← tells server: "I'm done"
+│     ecflow_client --complete               ← tells server on uecflow01: "I'm done"
 │
 └── (on failure)
-      ecflow_client --abort="error message"  ← tells server: "I failed"
+      ecflow_client --abort="error message"  ← tells server on uecflow01: "I failed"
 ```
 
 ## Step 5: Trigger Chain Continues
 
 ```
-ecflow_server receives --complete for stage_ic
+ecflow_server (on uecflow01) receives --complete for stage_ic
 │
 ├── evaluates triggers for all tasks:
 │     fcst: "stage_ic == complete" → YES → submit fcst
@@ -285,6 +308,9 @@ ecflow_server receives --complete for stage_ic
 ## Step 6: Monitor and Troubleshoot
 
 ```
+# All client commands run from any login node (ufe01, etc.)
+# with ECF_HOST=uecflow01
+
 $ ecflow_client --get_state /my_C48_test
   /my_C48_test {state:active}
     /2021032312 {state:active}
@@ -309,6 +335,9 @@ $ ecflow_client --kill /my_C48_test/2021032312/gfs/fcst
 
 # Requeue a failed task
 $ ecflow_client --force=set /my_C48_test/2021032312/gfs/fcst queued
+
+# GUI (needs X11 forwarding: ssh -X)
+$ ecflow_ui &
 
 # Delete and start over
 $ ecflow_client --delete=force yes /my_C48_test
